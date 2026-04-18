@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>みんなの実績</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+</head>
+<body>
+
+<!-- ====== Login Screen ====== -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <div class="login-logo">成</div>
+    <h1>みんなの実績</h1>
+    <p>症例実績・喜びの声・サンクス</p>
+    <div id="googleSignInBtn" class="google-btn-wrapper"></div>
+    <div id="loginError" class="login-error" style="display:none;"></div>
+    <div class="login-note">@seichiku.org アカウントでログインしてください</div>
+  </div>
+</div>
+
+<!-- ====== Main App (hidden until login) ====== -->
+<div id="mainApp" style="display:none;">
+
+  <!-- Hero -->
+  <div class="hero">
+    <div class="hero-top">
+      <div class="hero-logo">成</div>
+      <div class="hero-text">
+        <h1>みんなの実績</h1>
+        <p>症例実績・喜びの声・サンクス</p>
+      </div>
+      <div class="user-info" id="userInfo"></div>
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <div class="nav-tabs">
+    <div class="nav-tab active" data-tab="cases">症例実績</div>
+    <div class="nav-tab" data-tab="ranking">喜びの声ランキング</div>
+    <div class="nav-tab" data-tab="thanks">サンクス</div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loadingIndicator" class="loading">
+    <div class="spinner"></div>
+    <p>データを読み込んでいます...</p>
+  </div>
+
+  <!-- ====== Section 1: 症例実績 ====== -->
+  <div id="cases" class="section active">
+    <div class="section-title"><span class="icon">📋</span> カテゴリ別 症例実績</div>
+    <p class="section-desc">日報から蓄積された症例データを、症状カテゴリ別に検索・閲覧できます。</p>
+    <div class="search-bar">
+      <input type="text" class="search-input" id="caseSearch" placeholder="キーワードで検索（症状・スタッフ名・院名など）">
+    </div>
+    <div class="filter-chips" id="categoryChips"></div>
+    <div class="result-count" id="resultCount"></div>
+    <div class="case-grid" id="caseGrid"></div>
+    <div class="empty-state" id="caseEmpty" style="display:none;">
+      <div class="icon">🔍</div>
+      <p>該当する症例が見つかりません。<br>検索条件を変更してみてください。</p>
+    </div>
+  </div>
+
+  <!-- ====== Section 2: 喜びの声ランキング ====== -->
+  <div id="ranking" class="section">
+    <div class="section-title"><span class="icon">🏆</span> 喜びの声ランキング</div>
+    <p class="section-desc">患者さまからいただいた「喜びの声」をスタッフ別・院別に集計しています。</p>
+    <div class="ranking-grid">
+      <div class="ranking-section">
+        <h3>👤 スタッフ別ランキング</h3>
+        <div class="ranking-list" id="staffRanking"></div>
+      </div>
+      <div class="ranking-section">
+        <h3>🏥 院別ランキング</h3>
+        <div class="ranking-list" id="clinicRanking"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== Section 3: サンクス ====== -->
+  <div id="thanks" class="section">
+    <div class="section-title"><span class="icon">💛</span> サンクススコアリング</div>
+    <p class="section-desc">スタッフ間で贈り合った感謝のメッセージを閲覧できます。</p>
+    <div class="search-bar">
+      <input type="text" class="search-input" id="thanksSearch" placeholder="スタッフ名やメッセージで検索">
+      <select class="period-select" id="thanksPeriod">
+        <option value="all">全期間</option>
+      </select>
+    </div>
+    <div class="thanks-summary" id="thanksSummary"></div>
+    <div class="thanks-grid" id="thanksGrid"></div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">&copy; 2026 みんなの実績（社内限定）</div>
+</div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
