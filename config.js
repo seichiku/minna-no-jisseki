@@ -5,7 +5,7 @@
 const CONFIG = {
   // Google OAuth Client ID（Google Cloud Console で作成）
   // 手順: https://console.cloud.google.com → APIとサービス → 認証情報 → OAuth 2.0 クライアントID
-  GOOGLE_CLIENT_ID: '549687201713-okd4nunh3660l0eslvh5tqtkjhdarijq.apps.googleusercontent.com',
+  GOOGLE_CLIENT_ID: '248673786507-mdqci7it6nokcerj001k226k6fungjeu.apps.googleusercontent.com',
 
   // ログインを許可するドメイン（空配列 [] なら全Googleアカウント許可）
   ALLOWED_DOMAINS: ['seichiku.org'],
