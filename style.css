@@ -231,6 +231,27 @@ body {
   margin-bottom: 4px;
 }
 .deep-step-body p { font-size: 13px; line-height: 1.7; margin: 2px 0; }
+.deep-mark {
+  display: inline-block;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: 6px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.deep-orphan {
+  margin-top: 14px;
+  background: #fef3c7;
+  border-left: 3px solid #d97706;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: #92400e;
+}
 
 /* ── Empty State ── */
 .empty-state { text-align: center; padding: 60px 20px; color: var(--text-light); }

@@ -19,7 +19,7 @@ const CONFIG = {
     // 1日に最大3患者の記録を持つ構造
     DAILY_REPORT: {
       name: 'フォームの回答 2',
-      range: 'A:W',
+      range: 'A:X',
       columns: {
         timestamp: 0,        // タイムスタンプ
         date: 1,             // 本日の日付
@@ -48,6 +48,8 @@ const CONFIG = {
         closingCount: 20,    // 次回予約クロージング数
         symptomCategory: 21, // 症状カテゴリ
         joyVoice: 22,        // 患者さまの喜びの声
+        // 深掘り対象マーカー（2026-06-01 追加）
+        deepDiveMark: 23,    // 「患者①」「患者②」「患者③」のチェックボックス、カンマ区切り
       }
     },
     // サンクススコアリング

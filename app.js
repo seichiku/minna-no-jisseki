@@ -178,11 +178,17 @@ async function loadCaseData() {
       dailyRecords.push(base);
     }
 
+    // 深掘り対象マーカーをパース（チェックボックスの選択値が「患者①, 患者③」のように来る）
+    const mark = String(row[c.deepDiveMark] || '');
+    const isP1Deep = mark.includes('患者①');
+    const isP2Deep = mark.includes('患者②');
+    const isP3Deep = mark.includes('患者③');
+
     // 3患者を展開
     const patients = [
-      { idx: 1, name: row[c.p1Name], treatment: row[c.p1Treatment], reaction: row[c.p1Reaction], hypothesis: row[c.p1Hypothesis], nextNote: row[c.p1NextNote] },
-      { idx: 2, name: row[c.p2Name], treatment: row[c.p2Treatment], reaction: row[c.p2Reaction], hypothesis: row[c.p2Hypothesis], nextNote: row[c.p2NextNote] },
-      { idx: 3, name: row[c.p3Name], treatment: row[c.p3Treatment], reaction: row[c.p3Reaction], hypothesis: row[c.p3Hypothesis], nextNote: row[c.p3NextNote] },
+      { idx: 1, name: row[c.p1Name], treatment: row[c.p1Treatment], reaction: row[c.p1Reaction], hypothesis: row[c.p1Hypothesis], nextNote: row[c.p1NextNote], isDeepDive: isP1Deep },
+      { idx: 2, name: row[c.p2Name], treatment: row[c.p2Treatment], reaction: row[c.p2Reaction], hypothesis: row[c.p2Hypothesis], nextNote: row[c.p2NextNote], isDeepDive: isP2Deep },
+      { idx: 3, name: row[c.p3Name], treatment: row[c.p3Treatment], reaction: row[c.p3Reaction], hypothesis: row[c.p3Hypothesis], nextNote: row[c.p3NextNote], isDeepDive: isP3Deep },
     ];
 
     patients.forEach(p => {
@@ -195,6 +201,7 @@ async function loadCaseData() {
           reaction: p.reaction || '',
           hypothesis: p.hypothesis || '',
           nextNote: p.nextNote || '',
+          isDeepDive: p.isDeepDive,
         });
       }
     });
@@ -543,13 +550,20 @@ function renderDeepDive() {
   const monthDecl = deepDiveData.filter(d => d.month === period);
 
   grid.innerHTML = monthDecl.map(d => {
+    // このスタッフの「深掘り対象マーク済み」だけど名前マッチしない記録を別枠で表示
+    const markedOrphans = caseRecords.filter(rec => {
+      if (rec.staff !== d.staff || !rec.isDeepDive || !rec.patientName) return false;
+      const m = rec.patientName;
+      return !d.patients.some(p => m.includes(p) || p.includes(m));
+    });
+
     const threads = d.patients.map(pName => {
-      // 患者名でマッチする日報レコード
-      const records = caseRecords.filter(c =>
-        c.staff === d.staff &&
-        c.patientName &&
-        c.patientName.includes(pName) || pName.includes(c.patientName || '___nope___')
-      );
+      // 患者名マッチ OR 深掘り対象マーク済みでマッチするレコード
+      const records = caseRecords.filter(rec => {
+        if (rec.staff !== d.staff || !rec.patientName) return false;
+        const nameMatch = rec.patientName.includes(pName) || pName.includes(rec.patientName);
+        return nameMatch;
+      });
       const target = 4;
       const achieved = records.length >= target;
       return `
@@ -562,7 +576,7 @@ function renderDeepDive() {
             ? '<div class="deep-empty">この患者の経過記録がまだありません</div>'
             : `<div class="deep-thread">${records.map(r => `
                 <div class="deep-step">
-                  <div class="deep-step-date">${escHtml(r.date)}</div>
+                  <div class="deep-step-date">${escHtml(r.date)}${r.isDeepDive ? ' <span class="deep-mark">✓深掘り対象マーク</span>' : ''}</div>
                   <div class="deep-step-body">
                     ${r.treatment ? `<p><b>施術：</b>${escHtml(r.treatment)}</p>` : ''}
                     ${r.reaction ? `<p><b>反応：</b>${escHtml(r.reaction)}</p>` : ''}
@@ -572,6 +586,13 @@ function renderDeepDive() {
           }
         </div>`;
     }).join('');
+
+    const orphanWarn = markedOrphans.length === 0 ? '' : `
+      <div class="deep-orphan">
+        <b>⚠️ 注意：</b>${markedOrphans.length} 件の「深掘り対象マーク済み」記録が、宣言した3名の名前と一致していません。
+        記録された患者名：${markedOrphans.map(r => escHtml(r.patientName)).join('、')}。
+        宣言時の表記と日報の表記を統一すると、自動でこのスレッドに合流します。
+      </div>`;
 
     return `
       <div class="deep-staff-card">
@@ -583,6 +604,7 @@ function renderDeepDive() {
           <div class="deep-month">${escHtml(d.month)}</div>
         </div>
         ${threads}
+        ${orphanWarn}
       </div>
     `;
   }).join('');
