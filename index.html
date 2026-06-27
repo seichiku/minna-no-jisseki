@@ -42,6 +42,7 @@
   <div class="nav-tabs">
     <div class="nav-tab active" data-tab="cases">症例実績</div>
     <div class="nav-tab" data-tab="deepDive">深掘り症例</div>
+    <div class="nav-tab" data-tab="handan">判断</div>
     <div class="nav-tab" data-tab="ranking">喜びの声ランキング</div>
     <div class="nav-tab" data-tab="thanks">サンクス</div>
   </div>
@@ -76,6 +77,28 @@
       <select class="period-select" id="deepDivePeriod"></select>
     </div>
     <div class="deep-dive-grid" id="deepDiveGrid"></div>
+  </div>
+
+  <!-- ====== Section: 判断データベース ====== -->
+  <div id="handan" class="section">
+    <div class="section-title"><span class="icon">🧠</span> 判断データベース</div>
+    <p class="section-desc">植田の「なぜそう判断したか」を教材として公開しています。成長ランキングは『植田への接近（ギャップ改善）＋添削の反映』の<b>前月比の伸び</b>で評価します（正直さは点数化しません）。事実・経過はカルッテに、ここには判断ロジックだけを蓄積します。</p>
+
+    <div class="ranking-section" style="margin-bottom:28px;">
+      <h3>📈 成長ランキング（前月比の伸び）</h3>
+      <div class="ranking-list" id="growthRanking"></div>
+    </div>
+
+    <h3 style="margin-bottom:12px;">🧠 植田の公開判断</h3>
+    <div class="search-bar">
+      <input type="text" class="search-input" id="handanSearch" placeholder="キーワードで検索（院・種別・仮説・根拠・添削など）">
+    </div>
+    <div class="result-count" id="handanCount"></div>
+    <div class="case-grid" id="handanGrid"></div>
+    <div class="empty-state" id="handanEmpty" style="display:none;">
+      <div class="icon">🧠</div>
+      <p>植田の公開判断がまだありません。<br>判断ログの入力が始まると、ここに教材として表示されます。</p>
+    </div>
   </div>
 
   <!-- ====== Section 3: 喜びの声ランキング ====== -->

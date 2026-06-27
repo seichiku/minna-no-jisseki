@@ -8,6 +8,8 @@ let caseRecords = [];   // 患者単位（1日報3患者を展開）
 let dailyRecords = [];  // 日報単位（喜びの声・症状カテゴリ集計用）
 let thanksData = [];
 let deepDiveData = [];
+let handanRecords = [];   // 植田の公開判断
+let growthRanking = [];   // 成長ランキング
 let activeCategory = 'all';
 
 // ── Google Sign-In ──
@@ -51,6 +53,8 @@ window.onload = function () {
   document.getElementById('thanksPeriod').addEventListener('change', filterThanks);
   const ddPeriod = document.getElementById('deepDivePeriod');
   if (ddPeriod) ddPeriod.addEventListener('change', renderDeepDive);
+  const handanSearchEl = document.getElementById('handanSearch');
+  if (handanSearchEl) handanSearchEl.addEventListener('input', filterHandan);
 };
 
 let tokenClient;
@@ -121,7 +125,7 @@ async function loadAllData() {
   loading.style.display = 'flex';
 
   try {
-    await Promise.all([loadCaseData(), loadThanksData(), loadDeepDiveData()]);
+    await Promise.all([loadCaseData(), loadThanksData(), loadDeepDiveData(), loadHandanData()]);
   } catch (err) {
     console.error('Data loading error:', err);
   } finally {
@@ -608,6 +612,166 @@ function renderDeepDive() {
       </div>
     `;
   }).join('');
+}
+
+// ── 判断データベース ──
+async function loadHandanData() {
+  try {
+    // 公開判断（植田）
+    const jCfg = CONFIG.HANDAN_SHEETS.PUBLIC_JUDGMENT;
+    const jRows = await fetchSheet(CONFIG.HANDAN_SPREADSHEET_ID, jCfg.name, jCfg.range);
+    const jc = jCfg.columns;
+    handanRecords = (jRows.length <= 1 ? [] : jRows.slice(1))
+      .filter(row => (row[jc.staff] || '').trim() !== '')   // ヘッダ/プレースホルダ除外
+      .map(row => ({
+        date: row[jc.date] || '',
+        staff: row[jc.staff] || '',
+        clinic: row[jc.clinic] || '',
+        problemNo: row[jc.problemNo] || '',
+        type: row[jc.type] || '',
+        hypothesis: row[jc.hypothesis] || '',
+        evidence: row[jc.evidence] || '',
+        reason: row[jc.reason] || '',
+        risk: row[jc.risk] || '',
+        alt: row[jc.alt] || '',
+        checkPrev: row[jc.checkPrev] || '',
+        checkGap: row[jc.checkGap] || '',
+        newHypothesis: row[jc.newHypothesis] || '',
+        newEvidence: row[jc.newEvidence] || '',
+        newReason: row[jc.newReason] || '',
+        newRisk: row[jc.newRisk] || '',
+        newAlt: row[jc.newAlt] || '',
+        churnWhy: row[jc.churnWhy] || '',
+        churnPivot: row[jc.churnPivot] || '',
+        churnNext: row[jc.churnNext] || '',
+        uedaComment: row[jc.uedaComment] || '',
+        gapImprove: row[jc.gapImprove] || '',
+        commentReflect: row[jc.commentReflect] || '',
+      }))
+      .sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+    // 成長ランキング（先頭のタイトル/注記行を除き、データ行のみ抽出）
+    const rCfg = CONFIG.HANDAN_SHEETS.GROWTH_RANKING;
+    const rRows = await fetchSheet(CONFIG.HANDAN_SPREADSHEET_ID, rCfg.name, rCfg.range);
+    const rc = rCfg.columns;
+    growthRanking = rRows
+      .filter(row => {
+        const name = (row[rc.staff] || '').trim();
+        if (!name || name.indexOf('担当者') >= 0 || name.indexOf('成長ランキング') >= 0 || name.indexOf('※') === 0) return false;
+        return !isNaN(parseFloat(row[rc.rank])) || !isNaN(parseFloat(row[rc.scoreNow]));
+      })
+      .map(row => ({
+        staff: row[rc.staff] || '',
+        scoreNow: parseFloat(row[rc.scoreNow]) || 0,
+        scorePrev: parseFloat(row[rc.scorePrev]) || 0,
+        delta: parseFloat(row[rc.delta]) || 0,
+        rank: parseInt(row[rc.rank], 10) || 0,
+      }))
+      .sort((a, b) => (b.delta - a.delta) || (b.scoreNow - a.scoreNow));
+  } catch (err) {
+    console.warn('判断データの読み込みをスキップ:', err.message);
+    handanRecords = [];
+    growthRanking = [];
+  }
+  initHandan();
+}
+
+function initHandan() {
+  renderGrowthRanking();
+  filterHandan();
+}
+
+function renderGrowthRanking() {
+  const box = document.getElementById('growthRanking');
+  if (!box) return;
+  if (growthRanking.length === 0) {
+    box.innerHTML = '<div class="empty-state"><p>ランキングデータがまだありません</p></div>';
+    return;
+  }
+  box.innerHTML = growthRanking.map((g, i) => {
+    const sign = g.delta > 0 ? '+' : '';
+    const detail = `今月スコア ${g.scoreNow}（前月 ${g.scorePrev}）`;
+    return `
+      <div class="ranking-item">
+        <div class="rank">${i + 1}</div>
+        <div class="info">
+          <div class="name">${escHtml(g.staff)}</div>
+          <div class="detail">${escHtml(detail)}</div>
+        </div>
+        <div style="text-align:right">
+          <div class="count">${sign}${g.delta}</div>
+          <div class="count-label">伸び</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function filterHandan() {
+  const el = document.getElementById('handanGrid');
+  if (!el) return;
+  const query = (document.getElementById('handanSearch')?.value || '').toLowerCase();
+  const filtered = handanRecords.filter(r => {
+    if (!query) return true;
+    return [r.staff, r.clinic, r.type, r.hypothesis, r.evidence, r.reason, r.risk, r.alt,
+            r.checkGap, r.newHypothesis, r.churnWhy, r.uedaComment]
+      .some(v => (v || '').toLowerCase().includes(query));
+  });
+
+  const countEl = document.getElementById('handanCount');
+  if (countEl) countEl.textContent = `${filtered.length} 件の判断`;
+
+  const empty = document.getElementById('handanEmpty');
+  if (filtered.length === 0) {
+    el.innerHTML = '';
+    if (empty) empty.style.display = 'block';
+    return;
+  }
+  if (empty) empty.style.display = 'none';
+  el.innerHTML = filtered.map(handanCardHtml).join('');
+}
+
+function handanCardHtml(r) {
+  const typeBadge = r.type ? `<span class="category-badge">${escHtml(r.type)}</span>` : '';
+  const meta = `${escHtml(r.date)} ｜ ${escHtml(r.staff)}（${escHtml(r.clinic)}）${r.problemNo ? ' ｜ ' + escHtml(r.problemNo) + 'つ目の悩み' : ''}`;
+
+  const story = [
+    storyStep('💭 仮説（原因を何と読んだか）', r.hypothesis),
+    storyStep('🔎 根拠（何を見て/聞いて/触れて）', r.evidence),
+    storyStep('🩹 施術を選んだ理由', r.reason),
+    storyStep('⚠️ リスク／失敗条件', r.risk),
+    storyStep('🔀 別案', r.alt),
+    storyStep('↩️ 答え合わせ：前回の仮説どうだった', r.checkPrev),
+    storyStep('📐 予想とのズレ', r.checkGap),
+    storyStep('🆕 次の悩みの仮説', r.newHypothesis),
+    storyStep('🔎 その根拠', r.newEvidence),
+    storyStep('🩹 施術を選んだ理由', r.newReason),
+    storyStep('🚪 なぜ離反したと思うか', r.churnWhy),
+    storyStep('🧭 分岐点だった判断', r.churnPivot),
+    storyStep('🔁 次に同じ状況ならどう変えるか', r.churnNext),
+  ].join('');
+
+  const scoreChips = [];
+  if (String(r.gapImprove).trim() !== '') scoreChips.push(`<span class="thanks-pt">ギャップ改善 ${escHtml(r.gapImprove)}</span>`);
+  if (String(r.commentReflect).trim() !== '') scoreChips.push(`<span class="thanks-pt">添削反映 ${escHtml(r.commentReflect)}</span>`);
+  const scoreHtml = scoreChips.length ? `<div style="margin-top:10px;">${scoreChips.join(' ')}</div>` : '';
+
+  const commentHtml = r.uedaComment ? `
+    <div class="joy-voice">
+      <div class="joy-label">✏️ 植田添削</div>
+      <p>${escHtml(r.uedaComment)}</p>
+    </div>` : '';
+
+  return `
+    <div class="case-card">
+      <div class="case-head">
+        ${typeBadge}
+        <span class="case-meta">${meta}</span>
+      </div>
+      <div class="story">${story}</div>
+      ${commentHtml}
+      ${scoreHtml}
+    </div>
+  `;
 }
 
 // ── Utility ──
