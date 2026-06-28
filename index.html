@@ -40,7 +40,8 @@
 
   <!-- Navigation -->
   <div class="nav-tabs">
-    <div class="nav-tab active" data-tab="cases">症例実績</div>
+    <div class="nav-tab active" data-tab="kpi">チーム実績</div>
+    <div class="nav-tab" data-tab="cases">症例実績</div>
     <div class="nav-tab" data-tab="deepDive">深掘り症例</div>
     <div class="nav-tab" data-tab="ranking">喜びの声ランキング</div>
     <div class="nav-tab" data-tab="thanks">サンクス</div>
@@ -52,8 +53,37 @@
     <p>データを読み込んでいます...</p>
   </div>
 
+  <!-- ====== Section 0: チーム実績（サブスク導線・チームファースト） ====== -->
+  <div id="kpi" class="section active">
+    <div class="section-title"><span class="icon">🎯</span> チーム実績ダッシュボード</div>
+    <p class="section-desc">院（チーム）予算の達成がすべての基礎。院予算 → ストック → 先行指標 の順に表示しています。すべて分析シート（現行日計表・会員名簿・回数券台帳）からリアルタイム集計です。</p>
+
+    <!-- ① 院予算ゲージ -->
+    <div class="kpi-block">
+      <h3 class="kpi-h">① 院予算（チーム）<span class="kpi-tag live">LIVE</span></h3>
+      <div class="kpi-cards" id="kpiBudget"></div>
+    </div>
+
+    <!-- ② ストック（ライブ） -->
+    <div class="kpi-block">
+      <h3 class="kpi-h">② ストック ― サブスク <span class="kpi-tag live">LIVE</span></h3>
+      <div class="kpi-meter" id="kpiSubMeter"></div>
+      <div class="kpi-cards" id="kpiSubClinic"></div>
+    </div>
+    <div class="kpi-block">
+      <h3 class="kpi-h">② ストック ― オーダー回数券（目標6名/施術者）<span class="kpi-tag live">LIVE</span></h3>
+      <div class="kpi-gauges" id="kpiOrderGauges"></div>
+    </div>
+
+    <!-- ③ 先行指標 -->
+    <div class="kpi-block">
+      <h3 class="kpi-h">③ 先行指標（助け合い・行動の質）</h3>
+      <div class="kpi-cards" id="kpiLeading"></div>
+    </div>
+  </div>
+
   <!-- ====== Section 1: 症例実績 ====== -->
-  <div id="cases" class="section active">
+  <div id="cases" class="section">
     <div class="section-title"><span class="icon">📋</span> カテゴリ別 症例実績</div>
     <p class="section-desc">日報から蓄積された症例データを、施術内容→反応→仮説→申し送りのストーリー形式で閲覧できます。1日に最大3患者を記録できる構造です。</p>
     <div class="search-bar">

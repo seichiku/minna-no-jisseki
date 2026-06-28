@@ -121,7 +121,8 @@ async function loadAllData() {
   loading.style.display = 'flex';
 
   try {
-    await Promise.all([loadCaseData(), loadThanksData(), loadDeepDiveData()]);
+    await Promise.all([loadCaseData(), loadThanksData(), loadDeepDiveData(), loadKpiData()]);
+    renderKpi();
   } catch (err) {
     console.error('Data loading error:', err);
   } finally {
@@ -619,4 +620,233 @@ function escHtml(str) {
 }
 function escAttr(str) {
   return escHtml(str).replace(/"/g, '&quot;');
+}
+
+// ============================================================
+// チーム実績ダッシュボード（サブスク導線・チームファースト）
+// ストック=会員名簿/回数券台帳サマリーからライブ取得
+// 院予算/個人余剰=7月日計表稼働後に充填（現状は器）
+// ============================================================
+let kpiMember = null;   // 会員名簿サマリー grid
+let kpiKaisu = null;    // 回数券台帳サマリー grid
+let kpiAnalysis = null; // 分析シート「分析」タブ grid（院予算ブロック）
+let kpiFlow = null;     // 分析シート「フロー（3院）」タブ grid（予約率）
+let kpiAccessError = false;   // ストック(会員/回数券)共有エラー
+let kpiFlowError = false;     // 分析シート共有エラー
+
+async function loadKpiData() {
+  // ストック（会員名簿・回数券台帳）
+  try {
+    const [m, k] = await Promise.all([
+      fetchSheet(CONFIG.KPI.MEMBER_ID, CONFIG.KPI.MEMBER_SHEET, 'A1:F40'),
+      fetchSheet(CONFIG.KPI.KAISU_ID, CONFIG.KPI.KAISU_SHEET, 'A1:D20'),
+    ]);
+    kpiMember = m;
+    kpiKaisu = k;
+    kpiAccessError = false;
+  } catch (err) {
+    console.warn('KPIストックデータ読込失敗（共有未設定の可能性）:', err);
+    kpiAccessError = true;
+  }
+  // フロー（分析シート：院予算・予約率）
+  try {
+    const [an, fl] = await Promise.all([
+      fetchSheet(CONFIG.KPI.ANALYSIS_ID, CONFIG.KPI.ANALYSIS_TAB, 'A1:K140'),
+      fetchSheet(CONFIG.KPI.ANALYSIS_ID, CONFIG.KPI.FLOW_TAB, 'A1:E45'),
+    ]);
+    kpiAnalysis = an;
+    kpiFlow = fl;
+    kpiFlowError = false;
+  } catch (err) {
+    console.warn('分析シート読込失敗（共有未設定の可能性）:', err);
+    kpiFlowError = true;
+  }
+}
+
+function kpiFindRow(grid, val) {
+  if (!grid) return null;
+  for (const r of grid) { if (r && String(r[0] || '').trim() === val) return r; }
+  return null;
+}
+function kpiNum(s) { return parseInt(String(s == null ? '' : s).replace(/[^0-9\-]/g, ''), 10) || 0; }
+function kpiDisp(s) { return (s == null || s === '') ? '—' : String(s); }
+
+function renderKpi() {
+  renderKpiBudget();
+  renderKpiStock();
+  renderKpiOrder();
+  renderKpiLeading();
+  // 個人ブロックはスタッフ画面では非表示（院＋先行指標まで）
+}
+
+// 分析シートのグリッドから「院予算」テーブルを探す（[院,月予算,当月実績,達成度,残り,信号]）
+function kpiFindBudget(grid) {
+  if (!grid) return null;
+  for (let i = 0; i < grid.length; i++) {
+    const row = grid[i] || [];
+    if (String(row[0]).trim() === '院' && String(row[1]).indexOf('予算') >= 0) {
+      const out = [];
+      for (let j = i + 1; j < grid.length; j++) {
+        const r = grid[j] || [];
+        const nm = String(r[0] || '').trim();
+        if (!nm) break;
+        out.push({ name: nm, budget: r[1], actual: r[2], rate: r[3], remain: r[4], sig: r[5] });
+        if (nm === '全社') break;
+      }
+      return out;
+    }
+  }
+  return null;
+}
+
+// ① 院予算（分析シートからライブ）
+function renderKpiBudget() {
+  const el = document.getElementById('kpiBudget');
+  if (!el) return;
+  if (kpiFlowError || !kpiAnalysis) {
+    el.innerHTML = `<div class="kpi-note">院予算を表示するには、分析シートを @seichiku.org に閲覧共有してください。</div>`;
+    return;
+  }
+  const budget = kpiFindBudget(kpiAnalysis);
+  if (!budget || !budget.length) {
+    el.innerHTML = `<div class="kpi-note">分析シートの院予算データを読み込めませんでした。</div>`;
+    return;
+  }
+  el.innerHTML = budget.map(b => {
+    const pct = Math.min(100, Math.max(0, Math.round((parseFloat(String(b.rate).replace(/[^0-9.\-]/g, '')) || 0))));
+    const cls = pct >= 100 ? 'green' : (pct >= 80 ? 'live' : 'wait');
+    return `
+    <div class="kpi-card ${b.name === '全社' ? 'total' : ''}">
+      <div class="kpi-card-label">${b.name}</div>
+      <div class="kpi-card-big">${kpiDisp(b.rate)} <span class="kpi-card-unit">${b.sig || ''}</span></div>
+      <div class="kpi-bar"><div class="kpi-bar-fill ${cls}" style="width:${pct}%"></div></div>
+      <div class="kpi-card-sub">実績 ${kpiDisp(b.actual)} / 予算 ${kpiDisp(b.budget)}</div>
+    </div>`;
+  }).join('');
+}
+
+// ② ストック：サブスク（ライブ）
+function renderKpiStock() {
+  const meter = document.getElementById('kpiSubMeter');
+  const clinicEl = document.getElementById('kpiSubClinic');
+  if (!meter || !clinicEl) return;
+
+  if (kpiAccessError || !kpiMember) {
+    meter.innerHTML = `<div class="kpi-note">会員名簿サマリーを表示するには、@seichiku.org でこのアカウントに会員名簿スプレッドシートの閲覧共有が必要です。</div>`;
+    clinicEl.innerHTML = '';
+    return;
+  }
+
+  const goal = CONFIG.KPI.SUB_GOAL;
+  const totalRow = kpiFindRow(kpiMember, '全社');
+  const enrolled = totalRow ? kpiNum(totalRow[1]) : 0;
+  const mrr = totalRow ? kpiDisp(totalRow[2]) : '—';
+  const remain = Math.max(0, goal - enrolled);
+  const pct = Math.min(100, Math.round(enrolled / goal * 100));
+
+  meter.innerHTML = `
+    <div class="kpi-meter-head">
+      <span class="kpi-meter-now">${enrolled}</span>
+      <span class="kpi-meter-goal">/ ${goal} 名（12月ゴール）</span>
+      <span class="kpi-meter-mrr">MRR ${mrr}</span>
+    </div>
+    <div class="kpi-bar big"><div class="kpi-bar-fill live" style="width:${pct}%"></div></div>
+    <div class="kpi-meter-foot">あと <b>${remain}</b> 名　｜　9月目標 南砂30 / 塩浜20 / 東砂9 ＝計59</div>`;
+
+  // 院別 在籍 + MRR（9月目標つき）
+  const targets = { '南砂': 30, '塩浜': 20, '東砂': 9 };
+  clinicEl.innerHTML = CONFIG.KPI.CLINICS.map(c => {
+    const row = kpiFindRow(kpiMember, c);
+    const n = row ? kpiNum(row[1]) : 0;
+    const cmrr = row ? kpiDisp(row[2]) : '—';
+    const tgt = targets[c] || 0;
+    const cp = tgt ? Math.min(100, Math.round(n / tgt * 100)) : 0;
+    return `
+      <div class="kpi-card">
+        <div class="kpi-card-label">${c}院</div>
+        <div class="kpi-card-big">${n}<span class="kpi-card-unit">名</span></div>
+        <div class="kpi-bar"><div class="kpi-bar-fill live" style="width:${cp}%"></div></div>
+        <div class="kpi-card-sub">9月目標 ${tgt}名 ｜ MRR ${cmrr}</div>
+      </div>`;
+  }).join('');
+}
+
+// ② ストック：オーダー回数券（施術者6名/人ゲージ・ライブ）
+function renderKpiOrder() {
+  const el = document.getElementById('kpiOrderGauges');
+  if (!el) return;
+  if (kpiAccessError || !kpiKaisu) {
+    el.innerHTML = `<div class="kpi-note">回数券残高台帳サマリーの閲覧共有が必要です。</div>`;
+    return;
+  }
+  const goal = CONFIG.KPI.ORDER_GOAL;
+  el.innerHTML = CONFIG.KPI.STAFF.map(name => {
+    const row = kpiFindRow(kpiKaisu, name);
+    const have = row ? kpiNum(row[1]) : 0;
+    const remain = Math.max(0, goal - have);
+    const pct = Math.min(100, Math.round(have / goal * 100));
+    const done = remain === 0;
+    return `
+      <div class="kpi-gauge ${done ? 'done' : ''}">
+        <div class="kpi-gauge-name">${name}</div>
+        <div class="kpi-gauge-num">${have}<span class="kpi-card-unit">/${goal}</span></div>
+        <div class="kpi-bar"><div class="kpi-bar-fill ${done ? 'green' : 'live'}" style="width:${pct}%"></div></div>
+        <div class="kpi-card-sub">${done ? '🟢 達成' : 'あと ' + remain + '名'}</div>
+      </div>`;
+  }).join('');
+}
+
+// ③ 先行指標（次予約クロージングはライブ、他は器）
+function renderKpiLeading() {
+  const el = document.getElementById('kpiLeading');
+  if (!el) return;
+  const now = new Date();
+  function inThisMonth(d) {
+    const m = String(d).match(/(\d{4})[\/\-.](\d{1,2})/);
+    return m && parseInt(m[1], 10) === now.getFullYear() && parseInt(m[2], 10) === now.getMonth() + 1;
+  }
+  let closing = 0;
+  (dailyRecords || []).forEach(r => { if (inThisMonth(r.date)) closing += kpiNum(r.closingCount); });
+
+  // 予約率（分析シート フロー（3院）タブ：「既存/新患/再診 予約率」行・B=南砂/C=塩浜/D=東砂）
+  function flowRate(kind) {
+    if (!kpiFlow) return null;
+    for (const row of kpiFlow) {
+      if (row && String(row[0] || '').indexOf(kind + ' 予約率') >= 0) {
+        return { 南砂: row[1], 塩浜: row[2], 東砂: row[3] };
+      }
+    }
+    return null;
+  }
+  const yoyaku = ['既存', '新患', '再診'].map(k => ({ k, v: flowRate(k) }));
+
+  let html = `
+    <div class="kpi-card">
+      <div class="kpi-card-label">次予約クロージング（今月）</div>
+      <div class="kpi-card-big">${closing}<span class="kpi-card-unit">件</span></div>
+      <div class="kpi-card-sub"><span class="kpi-tag live">LIVE</span></div>
+    </div>`;
+  yoyaku.forEach(o => {
+    const v = o.v;
+    const live = v && !kpiFlowError;
+    const detail = live
+      ? `南砂 ${kpiDisp(v.南砂)} ｜ 塩浜 ${kpiDisp(v.塩浜)} ｜ 東砂 ${kpiDisp(v.東砂)}`
+      : (kpiFlowError ? '分析シート共有で表示' : '—');
+    html += `
+      <div class="kpi-card">
+        <div class="kpi-card-label">${o.k} 予約率</div>
+        <div class="kpi-card-big ${live ? '' : 'muted'}" style="font-size:18px;">${detail}</div>
+        <div class="kpi-card-sub">${live ? '<span class="kpi-tag live">LIVE</span>' : '<span class="kpi-tag wait">分析シート</span>'}</div>
+      </div>`;
+  });
+  // まだソースの無い先行指標（日報項目追加で充填）
+  ['サブ提案件数', 'LINE・対面接点（目標50人）', 'ロープレ実施'].forEach(label => {
+    html += `
+      <div class="kpi-card">
+        <div class="kpi-card-label">${label}</div>
+        <div class="kpi-card-big muted">—</div>
+        <div class="kpi-card-sub"><span class="kpi-tag wait">日報項目追加で充填</span></div>
+      </div>`;
+  });
+  el.innerHTML = html;
 }

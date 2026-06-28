@@ -271,3 +271,42 @@ body {
   .thanks-summary { grid-template-columns: repeat(2, 1fr); }
   .user-name { display: none; }
 }
+
+/* ===== チーム実績ダッシュボード（サブスク導線） ===== */
+.kpi-block { margin-bottom: 30px; }
+.kpi-h { font-size: 16px; font-weight: 700; color: var(--primary-dark); margin: 0 0 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.kpi-tag { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; }
+.kpi-tag.live { background: rgba(14,165,201,0.12); color: var(--primary-dark); }
+.kpi-tag.wait { background: #fde7d4; color: #b45309; }
+
+.kpi-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; }
+.kpi-card { background: var(--card-bg); border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow); border: 1px solid var(--border); }
+.kpi-card.total { background: linear-gradient(135deg, #fff7e6, #fffbf0); border-color: var(--accent-light); }
+.kpi-card-label { font-size: 13px; color: var(--text-light); font-weight: 600; margin-bottom: 6px; }
+.kpi-card-big { font-size: 30px; font-weight: 800; color: var(--text); line-height: 1.1; }
+.kpi-card-big.muted { color: #cbd5e1; }
+.kpi-card-unit { font-size: 14px; font-weight: 600; color: var(--text-light); margin-left: 3px; }
+.kpi-card-sub { font-size: 11px; color: var(--text-light); margin-top: 6px; }
+
+.kpi-bar { height: 8px; background: #eef2f6; border-radius: 6px; overflow: hidden; margin: 8px 0 4px; }
+.kpi-bar.big { height: 14px; }
+.kpi-bar-fill { height: 100%; border-radius: 6px; transition: width 0.6s ease; }
+.kpi-bar-fill.live { background: linear-gradient(90deg, var(--primary), var(--primary-light)); }
+.kpi-bar-fill.green { background: linear-gradient(90deg, #16a34a, #4ade80); }
+.kpi-bar-fill.wait { background: #e2e8f0; }
+
+.kpi-meter { background: var(--card-bg); border-radius: var(--radius); padding: 18px 20px; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 14px; }
+.kpi-meter-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.kpi-meter-now { font-size: 38px; font-weight: 800; color: var(--primary-dark); }
+.kpi-meter-goal { font-size: 15px; color: var(--text-light); font-weight: 600; }
+.kpi-meter-mrr { margin-left: auto; font-size: 14px; font-weight: 700; color: var(--accent); }
+.kpi-meter-foot { font-size: 12px; color: var(--text-light); margin-top: 6px; }
+.kpi-meter-foot b { color: #dc2626; font-size: 14px; }
+
+.kpi-gauges { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+.kpi-gauge { background: var(--card-bg); border-radius: var(--radius); padding: 14px; box-shadow: var(--shadow); border: 1px solid var(--border); text-align: center; }
+.kpi-gauge.done { border-color: #4ade80; background: linear-gradient(135deg, #f0fdf4, #ffffff); }
+.kpi-gauge-name { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.kpi-gauge-num { font-size: 26px; font-weight: 800; color: var(--primary-dark); }
+
+.kpi-note { background: #fef9ec; border: 1px solid #fde7d4; color: #92600a; font-size: 13px; padding: 14px 16px; border-radius: var(--radius); }
