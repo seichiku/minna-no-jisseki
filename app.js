@@ -45,10 +45,13 @@ window.onload = function () {
     });
   });
 
-  // Search listeners
-  document.getElementById('caseSearch').addEventListener('input', filterCases);
-  document.getElementById('thanksSearch').addEventListener('input', filterThanks);
-  document.getElementById('thanksPeriod').addEventListener('change', filterThanks);
+  // Search listeners（該当タブが無い場合はスキップ）
+  const csEl = document.getElementById('caseSearch');
+  if (csEl) csEl.addEventListener('input', filterCases);
+  const tsEl = document.getElementById('thanksSearch');
+  if (tsEl) tsEl.addEventListener('input', filterThanks);
+  const tpEl = document.getElementById('thanksPeriod');
+  if (tpEl) tpEl.addEventListener('change', filterThanks);
   const ddPeriod = document.getElementById('deepDivePeriod');
   if (ddPeriod) ddPeriod.addEventListener('change', renderDeepDive);
 };
@@ -121,8 +124,10 @@ async function loadAllData() {
   loading.style.display = 'flex';
 
   try {
-    await Promise.all([loadCaseData(), loadThanksData(), loadDeepDiveData(), loadKpiData()]);
+    // loadCaseData は先行指標「次予約クロージング」用に保持（症例タブは非表示）
+    await Promise.all([loadCaseData(), loadKpiData(), loadPersonalRanking()]);
     renderKpi();
+    renderPersonalRanking();
   } catch (err) {
     console.error('Data loading error:', err);
   } finally {
@@ -152,7 +157,7 @@ async function loadCaseData() {
   if (rows.length <= 1) {
     caseRecords = [];
     dailyRecords = [];
-    initCases();
+    if (document.getElementById('caseGrid')) initCases();
     return;
   }
 
@@ -212,8 +217,9 @@ async function loadCaseData() {
   caseRecords.sort((a, b) => (b.timestamp || b.date || '').localeCompare(a.timestamp || a.date || ''));
   dailyRecords.sort((a, b) => (b.timestamp || b.date || '').localeCompare(a.timestamp || a.date || ''));
 
-  initCases();
-  initRankings();
+  // 症例/喜びの声タブは非表示のため、要素がある時だけ描画
+  if (document.getElementById('caseGrid')) initCases();
+  if (document.getElementById('staffRanking')) initRankings();
 }
 
 // ── サンクスデータ読み込み（pt対応） ──
@@ -848,5 +854,67 @@ function renderKpiLeading() {
         <div class="kpi-card-sub"><span class="kpi-tag wait">日報項目追加で充填</span></div>
       </div>`;
   });
+  el.innerHTML = html;
+}
+
+// ============================================================
+// 個人ランキング（分析シート「個人ランキング」タブをミラー）
+// ============================================================
+let kpiPersonalGrid = null;
+let kpiPersonalError = false;
+
+async function loadPersonalRanking() {
+  try {
+    kpiPersonalGrid = await fetchSheet(CONFIG.KPI.ANALYSIS_ID, CONFIG.KPI.PERSONAL_TAB, 'A1:I40');
+    kpiPersonalError = false;
+  } catch (err) {
+    console.warn('個人ランキング読込失敗（共有未設定の可能性）:', err);
+    kpiPersonalError = true;
+  }
+}
+
+function renderPersonalRanking() {
+  const el = document.getElementById('personalRankingBody');
+  if (!el) return;
+  if (kpiPersonalError || !kpiPersonalGrid) {
+    el.innerHTML = `<div class="kpi-note">個人ランキングを表示するには、分析シートを @seichiku.org に閲覧共有してください。</div>`;
+    return;
+  }
+  // ヘッダ行（A列が「順位」）を探す
+  let hi = -1;
+  for (let i = 0; i < kpiPersonalGrid.length; i++) {
+    if (String((kpiPersonalGrid[i] || [])[0]).trim() === '順位') { hi = i; break; }
+  }
+  if (hi < 0) {
+    el.innerHTML = `<div class="kpi-note">分析シートの個人ランキングデータを読み込めませんでした。</div>`;
+    return;
+  }
+  const rows = [];
+  for (let i = hi + 1; i < kpiPersonalGrid.length; i++) {
+    const r = kpiPersonalGrid[i] || [];
+    if (!String(r[1] || '').trim()) break;   // 施術者名が空＝終端
+    rows.push(r);
+  }
+  // 列: 0順位 1施術者 2所属院 3個人売上 4-120万達成 5余剰 6目的休暇 7稼働率 8人時
+  let html = `<table class="rank-table">
+    <thead><tr>
+      <th>順位</th><th>施術者</th><th>所属院</th><th>個人売上(月)</th>
+      <th>120万<br>達成</th><th>目的休暇<br>(日)</th><th>稼働率</th><th>人時(円/h)</th>
+    </tr></thead><tbody>`;
+  rows.forEach(r => {
+    const achieved = String(r[4] || '').indexOf('達成') >= 0;
+    html += `<tr class="${achieved ? 'rank-achieved' : ''}">
+      <td class="rank-pos">${kpiDisp(r[0])}</td>
+      <td class="rank-name">${kpiDisp(r[1])}</td>
+      <td class="rank-clinic">${kpiDisp(r[2])}</td>
+      <td class="rank-sales">${kpiDisp(r[3])}</td>
+      <td>${kpiDisp(r[4])}</td>
+      <td>${kpiDisp(r[6])}</td>
+      <td>${kpiDisp(r[7])}</td>
+      <td>${kpiDisp(r[8])}</td>
+    </tr>`;
+  });
+  html += `</tbody></table>
+    <p class="section-desc" style="margin-top:12px;">※昇給は個人120万達成＋チーム(院)予算達成が条件。目的休暇日数＝(余剰×20%)÷日当。有山さん(管理部)は施術者集計の対象外です。</p>`;
   el.innerHTML = html;
 }

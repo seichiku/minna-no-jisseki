@@ -41,10 +41,7 @@
   <!-- Navigation -->
   <div class="nav-tabs">
     <div class="nav-tab active" data-tab="kpi">チーム実績</div>
-    <div class="nav-tab" data-tab="cases">症例実績</div>
-    <div class="nav-tab" data-tab="deepDive">深掘り症例</div>
-    <div class="nav-tab" data-tab="ranking">喜びの声ランキング</div>
-    <div class="nav-tab" data-tab="thanks">サンクス</div>
+    <div class="nav-tab" data-tab="personalRanking">個人ランキング</div>
   </div>
 
   <!-- Loading -->
@@ -82,73 +79,11 @@
     </div>
   </div>
 
-  <!-- ====== Section 1: 症例実績 ====== -->
-  <div id="cases" class="section">
-    <div class="section-title"><span class="icon">📋</span> カテゴリ別 症例実績</div>
-    <p class="section-desc">日報から蓄積された症例データを、施術内容→反応→仮説→申し送りのストーリー形式で閲覧できます。1日に最大3患者を記録できる構造です。</p>
-    <div class="search-bar">
-      <input type="text" class="search-input" id="caseSearch" placeholder="キーワードで検索（患者名・症状・スタッフ名・院名・施術内容など）">
-    </div>
-    <div class="filter-chips" id="categoryChips"></div>
-    <div class="result-count" id="resultCount"></div>
-    <div class="case-grid" id="caseGrid"></div>
-    <div class="empty-state" id="caseEmpty" style="display:none;">
-      <div class="icon">🔍</div>
-      <p>該当する症例が見つかりません。<br>検索条件を変更してみてください。</p>
-    </div>
-  </div>
-
-  <!-- ====== Section 2: 深掘り症例（NEW） ====== -->
-  <div id="deepDive" class="section">
-    <div class="section-title"><span class="icon">🎯</span> 月間 深掘り3名</div>
-    <p class="section-desc">各スタッフが月初に宣言した「深掘り3名」の経過を、患者ごとにスレッド形式で表示します。目標：1人につき4回以上の経過記録（週1ペース）。</p>
-    <div class="search-bar">
-      <select class="period-select" id="deepDivePeriod"></select>
-    </div>
-    <div class="deep-dive-grid" id="deepDiveGrid"></div>
-  </div>
-
-  <!-- ====== Section 3: 喜びの声ランキング ====== -->
-  <div id="ranking" class="section">
-    <div class="section-title"><span class="icon">🏆</span> 喜びの声ランキング</div>
-    <p class="section-desc">患者さまからいただいた「喜びの声」をスタッフ別・院別に集計しています。</p>
-    <div class="ranking-grid">
-      <div class="ranking-section">
-        <h3>👤 スタッフ別ランキング</h3>
-        <div class="ranking-list" id="staffRanking"></div>
-      </div>
-      <div class="ranking-section">
-        <h3>🏥 院別ランキング</h3>
-        <div class="ranking-list" id="clinicRanking"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ====== Section 4: サンクス ====== -->
-  <div id="thanks" class="section">
-    <div class="section-title"><span class="icon">💛</span> サンクススコアリング</div>
-    <p class="section-desc">スタッフ間で贈り合った感謝のメッセージとポイントを閲覧できます。</p>
-    <div class="search-bar">
-      <input type="text" class="search-input" id="thanksSearch" placeholder="スタッフ名やメッセージで検索">
-      <select class="period-select" id="thanksPeriod">
-        <option value="all">全期間</option>
-      </select>
-    </div>
-    <div class="thanks-summary" id="thanksSummary"></div>
-
-    <div class="ranking-grid" style="margin-bottom:28px;">
-      <div class="ranking-section">
-        <h3>🏅 pt獲得ランキング</h3>
-        <div class="ranking-list" id="thanksReceiveRanking"></div>
-      </div>
-      <div class="ranking-section">
-        <h3>📨 pt送付ランキング</h3>
-        <div class="ranking-list" id="thanksSendRanking"></div>
-      </div>
-    </div>
-
-    <h3 style="margin-bottom:14px;">💬 サンクスメッセージ一覧</h3>
-    <div class="thanks-grid" id="thanksGrid"></div>
+  <!-- ====== Section 1: 個人ランキング ====== -->
+  <div id="personalRanking" class="section">
+    <div class="section-title"><span class="icon">🏆</span> 個人ランキング</div>
+    <p class="section-desc">現行日計表「分析」より院横断で集約した個人売上ランキング（施術者のみ）。個人売上150万（損益分岐120万＋余剰30万）の人材育成が目的。チームファースト＝院予算が土台、個人は成長指標です。</p>
+    <div id="personalRankingBody"></div>
   </div>
 
   <!-- Footer -->
