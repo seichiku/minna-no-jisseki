@@ -719,13 +719,14 @@ function renderKpiBudget() {
     return;
   }
   el.innerHTML = budget.map(b => {
-    const pct = Math.min(100, Math.max(0, Math.round((parseFloat(String(b.rate).replace(/[^0-9.\-]/g, '')) || 0))));
-    const cls = pct >= 100 ? 'green' : (pct >= 80 ? 'live' : 'wait');
+    const raw = parseFloat(String(b.rate).replace(/[^0-9.\-]/g, '')) || 0;
+    const band = raw >= 100 ? 'green' : (raw >= 80 ? 'yellow' : 'red');
+    const w = Math.min(100, Math.max(0, Math.round(raw)));
     return `
-    <div class="kpi-card ${b.name === '全社' ? 'total' : ''}">
+    <div class="kpi-card budget-${band}">
       <div class="kpi-card-label">${b.name}</div>
       <div class="kpi-card-big">${kpiDisp(b.rate)} <span class="kpi-card-unit">${b.sig || ''}</span></div>
-      <div class="kpi-bar"><div class="kpi-bar-fill ${cls}" style="width:${pct}%"></div></div>
+      <div class="kpi-bar"><div class="kpi-bar-fill ${band}" style="width:${w}%"></div></div>
       <div class="kpi-card-sub">実績 ${kpiDisp(b.actual)} / 予算 ${kpiDisp(b.budget)}</div>
     </div>`;
   }).join('');
@@ -896,25 +897,33 @@ function renderPersonalRanking() {
     rows.push(r);
   }
   // 列: 0順位 1施術者 2所属院 3個人売上 4-120万達成 5余剰 6目的休暇 7稼働率 8人時
+  const BUDGET = 1200000;  // 個人予算＝損益分岐120万
   let html = `<table class="rank-table">
     <thead><tr>
       <th>順位</th><th>施術者</th><th>所属院</th><th>個人売上(月)</th>
-      <th>120万<br>達成</th><th>目的休暇<br>(日)</th><th>稼働率</th><th>人時(円/h)</th>
+      <th>予算達成度<br>(120万)</th><th>目的休暇<br>(日)</th><th>稼働率</th><th>人時(円/h)</th>
     </tr></thead><tbody>`;
   rows.forEach(r => {
-    const achieved = String(r[4] || '').indexOf('達成') >= 0;
-    html += `<tr class="${achieved ? 'rank-achieved' : ''}">
+    const sales = kpiNum(r[3]);
+    const pct = BUDGET ? Math.round(sales / BUDGET * 100) : 0;
+    const band = pct >= 100 ? 'green' : (pct >= 80 ? 'yellow' : 'red');
+    const sig = pct >= 100 ? '🟢' : (pct >= 80 ? '🟡' : '🔴');
+    const w = Math.min(100, Math.max(0, pct));
+    html += `<tr class="rank-${band}">
       <td class="rank-pos">${kpiDisp(r[0])}</td>
       <td class="rank-name">${kpiDisp(r[1])}</td>
       <td class="rank-clinic">${kpiDisp(r[2])}</td>
       <td class="rank-sales">${kpiDisp(r[3])}</td>
-      <td>${kpiDisp(r[4])}</td>
+      <td class="rank-rate">
+        <span class="rate-badge rate-${band}">${pct}% ${sig}</span>
+        <span class="rate-bar"><span class="rate-bar-fill ${band}" style="width:${w}%"></span></span>
+      </td>
       <td>${kpiDisp(r[6])}</td>
       <td>${kpiDisp(r[7])}</td>
       <td>${kpiDisp(r[8])}</td>
     </tr>`;
   });
   html += `</tbody></table>
-    <p class="section-desc" style="margin-top:12px;">※昇給は個人120万達成＋チーム(院)予算達成が条件。目的休暇日数＝(余剰×20%)÷日当。有山さん(管理部)は施術者集計の対象外です。</p>`;
+    <p class="section-desc" style="margin-top:12px;">※色分け＝個人予算（損益分岐120万）の達成度（🟢100%以上 / 🟡80-99% / 🔴79%以下）。昇給は個人120万達成＋チーム(院)予算達成が条件。目的休暇日数＝(余剰×20%)÷日当。有山さん(管理部)は施術者集計の対象外です。</p>`;
   el.innerHTML = html;
 }
