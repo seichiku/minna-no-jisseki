@@ -682,60 +682,109 @@ function kpiDisp(s) { return (s == null || s === '') ? '—' : String(s); }
 
 function renderKpi() {
   renderKpiBudget();
-  renderKpiDaily();
   renderKpiStock();
   renderKpiOrder();
   renderKpiLeading();
+  renderClinicPages();   // 各院ページ（日次達成・鍼灸受診率・離反率・1/2ヶ月離反数）
   // 個人ブロックはスタッフ画面では非表示（院＋先行指標まで）
 }
 
-// ①-2 院の日次達成（毎日の予算達成・分析シート「日次達成」タブから）
-function renderKpiDaily() {
-  const el = document.getElementById('kpiDaily');
-  if (!el) return;
-  if (kpiFlowError || !kpiDaily) {
-    el.innerHTML = `<div class="kpi-note">日次達成を表示するには、分析シートを @seichiku.org に閲覧共有してください。</div>`;
-    return;
+// フロー（3院）タブから指標を院別に取得 → {南砂,塩浜,東砂}
+function flowMetric(label) {
+  if (!kpiFlow) return null;
+  for (const r of kpiFlow) {
+    if (r && String(r[0] || '').trim() === label) {
+      return { '南砂': r[1], '塩浜': r[2], '東砂': r[3] };
+    }
   }
-  // ヘッダ行（col0='院'）を探す
+  return null;
+}
+
+// 日次達成タブから1院分の日次ストリップHTMLを返す
+function dailyStripHtml(clinicName) {
+  if (!kpiDaily) return '';
+  function band(p) { return p >= 100 ? 'green' : (p >= 80 ? 'yellow' : 'red'); }
   let hi = -1;
   for (let i = 0; i < kpiDaily.length; i++) {
     if (String((kpiDaily[i] || [])[0]).trim() === '院') { hi = i; break; }
   }
-  if (hi < 0) { el.innerHTML = `<div class="kpi-note">日次達成データを読み込めませんでした。</div>`; return; }
-  function band(p) { return p >= 100 ? 'green' : (p >= 80 ? 'yellow' : 'red'); }
-  let html = '';
+  if (hi < 0) return '';
   for (let i = hi + 1; i < kpiDaily.length; i++) {
     const r = kpiDaily[i] || [];
-    const name = String(r[0] || '').trim();
-    if (!name) break;
-    const daily = kpiDisp(r[1]);     // 日割予算
-    const recent = String(r[3] || '').trim();  // 直近達成 e.g. "131%"
+    if (String(r[0] || '').trim() !== clinicName) continue;
+    const daily = kpiDisp(r[1]);
+    const recent = String(r[3] || '').trim();
     const recentPct = parseInt(recent.replace(/[^0-9\-]/g, ''), 10) || 0;
     const rband = band(recentPct);
-    // 1〜31日 = 列E..（index 4..34）。day d → index 3+d
     let cells = '';
     for (let d = 1; d <= 31; d++) {
       const v = r[3 + d];
       const s = (v === undefined || v === null || String(v).trim() === '') ? '' : String(v).trim();
-      if (s === '') {
-        cells += `<span class="day-cell day-off" title="${d}日 休診/未到来"></span>`;
-      } else {
-        const p = parseInt(s.replace(/[^0-9\-]/g, ''), 10) || 0;
-        cells += `<span class="day-cell day-${band(p)}" title="${d}日 ${p}%">${d}</span>`;
-      }
+      if (s === '') cells += `<span class="day-cell day-off" title="${d}日 休診/未到来"></span>`;
+      else { const p = parseInt(s.replace(/[^0-9\-]/g, ''), 10) || 0; cells += `<span class="day-cell day-${band(p)}" title="${d}日 ${p}%">${d}</span>`; }
     }
-    html += `
-      <div class="daily-row">
-        <div class="daily-head">
-          <span class="daily-clinic">${name}</span>
-          <span class="daily-recent badge-${rband}">直近 ${recent || '—'}</span>
-          <span class="daily-budget">日割 ${daily}</span>
-        </div>
-        <div class="day-strip">${cells}</div>
-      </div>`;
+    return `<div class="daily-head">
+        <span class="daily-recent badge-${rband}">直近 ${recent || '—'}</span>
+        <span class="daily-budget">日割予算 ${daily}</span>
+      </div>
+      <div class="day-strip">${cells}</div>`;
   }
-  el.innerHTML = html;
+  return '';
+}
+
+// 各院ページ（南砂/塩浜/東砂）
+function renderClinicPages() {
+  const acu = flowMetric('鍼灸受診率');
+  const churn = flowMetric('離反率');
+  const c1 = flowMetric('1ヶ月離反数');
+  const c2 = flowMetric('2ヶ月離反数');
+  CONFIG.KPI.CLINICS.forEach((name, idx) => {
+    const el = document.getElementById('clinicBody' + idx);
+    if (!el) return;
+    if (kpiFlowError && !kpiDaily) {
+      el.innerHTML = `<div class="kpi-note">${name}院の指標を表示するには、分析シートを @seichiku.org に閲覧共有してください。</div>`;
+      return;
+    }
+    // 鍼灸受診率の色（目標60%）／離反率の色（目標8%以下）
+    const acuV = acu ? kpiNum(acu[name]) : 0;
+    const acuBand = acuV >= 60 ? 'green' : (acuV >= 40 ? 'yellow' : 'red');
+    const chV = churn ? kpiNum(churn[name]) : 0;
+    const chBand = chV <= 8 ? 'green' : (chV <= 12 ? 'yellow' : 'red');
+    el.innerHTML = `
+      <div class="kpi-block">
+        <h3 class="kpi-h">日次達成（毎日の予算達成）<span class="kpi-tag live">LIVE</span></h3>
+        <p class="section-desc" style="margin:0 0 10px;">当日院売上 ÷ 日割予算。🟢100%以上 / 🟡80-99% / 🔴79%以下。空欄＝休診/未到来。</p>
+        <div class="daily-row">${dailyStripHtml(name) || '<div class="kpi-note">日次データなし</div>'}</div>
+      </div>
+      <div class="kpi-block">
+        <h3 class="kpi-h">月次指標<span class="kpi-tag live">LIVE</span></h3>
+        <div class="kpi-cards">
+          <div class="kpi-card">
+            <div class="kpi-card-label">鍼灸受診率（目標60%）</div>
+            <div class="kpi-card-big" style="color:${acuBand==='green'?'#15803d':acuBand==='yellow'?'#b45309':'#b91c1c'}">${acu?kpiDisp(acu[name]):'—'}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-card-label">離反率（目標8%以下）</div>
+            <div class="kpi-card-big" style="color:${chBand==='green'?'#15803d':chBand==='yellow'?'#b45309':'#b91c1c'}">${churn?kpiDisp(churn[name]):'—'}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-card-label">1ヶ月離反数</div>
+            <div class="kpi-card-big">${c1?kpiDisp(c1[name]):'—'}</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-card-label">2ヶ月離反数</div>
+            <div class="kpi-card-big">${c2?kpiDisp(c2[name]):'—'}</div>
+          </div>
+        </div>
+      </div>`;
+  });
+}
+
+// （旧）①-2 院の日次達成 — チーム実績では非表示。要素があれば描画（後方互換）
+// （旧）①-2 院の日次達成 — 各院ページへ移設。kpiDaily要素が残っていれば空にする
+function renderKpiDaily() {
+  const el = document.getElementById('kpiDaily');
+  if (el) el.innerHTML = '';
 }
 
 // 分析シートのグリッドから「院予算」テーブルを探す（[院,月予算,当月実績,達成度,残り,信号]）
@@ -868,38 +917,13 @@ function renderKpiLeading() {
   let closing = 0;
   (dailyRecords || []).forEach(r => { if (inThisMonth(r.date)) closing += kpiNum(r.closingCount); });
 
-  // 予約率（分析シート フロー（3院）タブ：「既存/新患/再診 予約率」行・B=南砂/C=塩浜/D=東砂）
-  function flowRate(kind) {
-    if (!kpiFlow) return null;
-    for (const row of kpiFlow) {
-      if (row && String(row[0] || '').indexOf(kind + ' 予約率') >= 0) {
-        return { 南砂: row[1], 塩浜: row[2], 東砂: row[3] };
-      }
-    }
-    return null;
-  }
-  const yoyaku = ['既存', '新患', '再診'].map(k => ({ k, v: flowRate(k) }));
-
   let html = `
     <div class="kpi-card">
       <div class="kpi-card-label">次予約クロージング（今月）</div>
       <div class="kpi-card-big">${closing}<span class="kpi-card-unit">件</span></div>
       <div class="kpi-card-sub"><span class="kpi-tag live">LIVE</span></div>
     </div>`;
-  yoyaku.forEach(o => {
-    const v = o.v;
-    const live = v && !kpiFlowError;
-    const detail = live
-      ? `南砂 ${kpiDisp(v.南砂)} ｜ 塩浜 ${kpiDisp(v.塩浜)} ｜ 東砂 ${kpiDisp(v.東砂)}`
-      : (kpiFlowError ? '分析シート共有で表示' : '—');
-    html += `
-      <div class="kpi-card">
-        <div class="kpi-card-label">${o.k} 予約率</div>
-        <div class="kpi-card-big ${live ? '' : 'muted'}" style="font-size:18px;">${detail}</div>
-        <div class="kpi-card-sub">${live ? '<span class="kpi-tag live">LIVE</span>' : '<span class="kpi-tag wait">分析シート</span>'}</div>
-      </div>`;
-  });
-  // まだソースの無い先行指標（日報項目追加で充填）
+  // まだソースの無い先行指標（日報項目追加で充填）。院別の鍼灸受診率/リピート/離反は各院ページへ。
   ['サブ提案件数', 'LINE・対面接点（目標50人）', 'ロープレ実施'].forEach(label => {
     html += `
       <div class="kpi-card">

@@ -41,6 +41,9 @@
   <!-- Navigation -->
   <div class="nav-tabs">
     <div class="nav-tab active" data-tab="kpi">チーム実績</div>
+    <div class="nav-tab" data-tab="clinic0">南砂院</div>
+    <div class="nav-tab" data-tab="clinic1">塩浜院</div>
+    <div class="nav-tab" data-tab="clinic2">東砂院</div>
     <div class="nav-tab" data-tab="personalRanking">個人ランキング</div>
   </div>
 
@@ -61,12 +64,6 @@
       <div class="kpi-cards" id="kpiBudget"></div>
     </div>
 
-    <!-- ①-2 院の日次達成（毎日の予算達成） -->
-    <div class="kpi-block">
-      <h3 class="kpi-h">① 院の日次達成（毎日の予算達成）<span class="kpi-tag live">LIVE</span></h3>
-      <p class="section-desc" style="margin:0 0 10px;">各日の院売上 ÷ 日割予算（月予算÷診療日数）。🟢100%以上 / 🟡80-99% / 🔴79%以下。空欄＝休診/未到来。マスを置くと日付と達成率が出ます。</p>
-      <div id="kpiDaily"></div>
-    </div>
 
     <!-- ② ストック（ライブ） -->
     <div class="kpi-block">
@@ -84,6 +81,23 @@
       <h3 class="kpi-h">③ 先行指標（助け合い・行動の質）</h3>
       <div class="kpi-cards" id="kpiLeading"></div>
     </div>
+  </div>
+
+  <!-- ====== 各院ページ（南砂/塩浜/東砂） ====== -->
+  <div id="clinic0" class="section">
+    <div class="section-title"><span class="icon">🏥</span> 南砂院</div>
+    <p class="section-desc">日次達成・鍼灸受診率・離反率・1ヶ月/2ヶ月離反数。分析シート（現行日計表・6月SMシート）からライブ集計です。</p>
+    <div id="clinicBody0"></div>
+  </div>
+  <div id="clinic1" class="section">
+    <div class="section-title"><span class="icon">🏥</span> 塩浜院</div>
+    <p class="section-desc">日次達成・鍼灸受診率・離反率・1ヶ月/2ヶ月離反数。分析シート（現行日計表・6月SMシート）からライブ集計です。</p>
+    <div id="clinicBody1"></div>
+  </div>
+  <div id="clinic2" class="section">
+    <div class="section-title"><span class="icon">🏥</span> 東砂院</div>
+    <p class="section-desc">日次達成・鍼灸受診率・離反率・1ヶ月/2ヶ月離反数。分析シート（現行日計表・6月SMシート）からライブ集計です。</p>
+    <div id="clinicBody2"></div>
   </div>
 
   <!-- ====== Section 1: 個人ランキング ====== -->
