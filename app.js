@@ -637,6 +637,7 @@ let kpiMember = null;   // 会員名簿サマリー grid
 let kpiKaisu = null;    // 回数券台帳サマリー grid
 let kpiAnalysis = null; // 分析シート「分析」タブ grid（院予算ブロック）
 let kpiFlow = null;     // 分析シート「フロー（3院）」タブ grid（予約率）
+let kpiDaily = null;    // 分析シート「日次達成」タブ grid（院別・毎日の予算達成）
 let kpiAccessError = false;   // ストック(会員/回数券)共有エラー
 let kpiFlowError = false;     // 分析シート共有エラー
 
@@ -654,14 +655,16 @@ async function loadKpiData() {
     console.warn('KPIストックデータ読込失敗（共有未設定の可能性）:', err);
     kpiAccessError = true;
   }
-  // フロー（分析シート：院予算・予約率）
+  // フロー（分析シート：院予算・予約率・日次達成）
   try {
-    const [an, fl] = await Promise.all([
+    const [an, fl, dl] = await Promise.all([
       fetchSheet(CONFIG.KPI.ANALYSIS_ID, CONFIG.KPI.ANALYSIS_TAB, 'A1:K140'),
       fetchSheet(CONFIG.KPI.ANALYSIS_ID, CONFIG.KPI.FLOW_TAB, 'A1:E45'),
+      fetchSheet(CONFIG.KPI.ANALYSIS_ID, CONFIG.KPI.DAILY_TAB, 'A1:AI8'),
     ]);
     kpiAnalysis = an;
     kpiFlow = fl;
+    kpiDaily = dl;
     kpiFlowError = false;
   } catch (err) {
     console.warn('分析シート読込失敗（共有未設定の可能性）:', err);
@@ -679,10 +682,60 @@ function kpiDisp(s) { return (s == null || s === '') ? '—' : String(s); }
 
 function renderKpi() {
   renderKpiBudget();
+  renderKpiDaily();
   renderKpiStock();
   renderKpiOrder();
   renderKpiLeading();
   // 個人ブロックはスタッフ画面では非表示（院＋先行指標まで）
+}
+
+// ①-2 院の日次達成（毎日の予算達成・分析シート「日次達成」タブから）
+function renderKpiDaily() {
+  const el = document.getElementById('kpiDaily');
+  if (!el) return;
+  if (kpiFlowError || !kpiDaily) {
+    el.innerHTML = `<div class="kpi-note">日次達成を表示するには、分析シートを @seichiku.org に閲覧共有してください。</div>`;
+    return;
+  }
+  // ヘッダ行（col0='院'）を探す
+  let hi = -1;
+  for (let i = 0; i < kpiDaily.length; i++) {
+    if (String((kpiDaily[i] || [])[0]).trim() === '院') { hi = i; break; }
+  }
+  if (hi < 0) { el.innerHTML = `<div class="kpi-note">日次達成データを読み込めませんでした。</div>`; return; }
+  function band(p) { return p >= 100 ? 'green' : (p >= 80 ? 'yellow' : 'red'); }
+  let html = '';
+  for (let i = hi + 1; i < kpiDaily.length; i++) {
+    const r = kpiDaily[i] || [];
+    const name = String(r[0] || '').trim();
+    if (!name) break;
+    const daily = kpiDisp(r[1]);     // 日割予算
+    const recent = String(r[3] || '').trim();  // 直近達成 e.g. "131%"
+    const recentPct = parseInt(recent.replace(/[^0-9\-]/g, ''), 10) || 0;
+    const rband = band(recentPct);
+    // 1〜31日 = 列E..（index 4..34）。day d → index 3+d
+    let cells = '';
+    for (let d = 1; d <= 31; d++) {
+      const v = r[3 + d];
+      const s = (v === undefined || v === null || String(v).trim() === '') ? '' : String(v).trim();
+      if (s === '') {
+        cells += `<span class="day-cell day-off" title="${d}日 休診/未到来"></span>`;
+      } else {
+        const p = parseInt(s.replace(/[^0-9\-]/g, ''), 10) || 0;
+        cells += `<span class="day-cell day-${band(p)}" title="${d}日 ${p}%">${d}</span>`;
+      }
+    }
+    html += `
+      <div class="daily-row">
+        <div class="daily-head">
+          <span class="daily-clinic">${name}</span>
+          <span class="daily-recent badge-${rband}">直近 ${recent || '—'}</span>
+          <span class="daily-budget">日割 ${daily}</span>
+        </div>
+        <div class="day-strip">${cells}</div>
+      </div>`;
+  }
+  el.innerHTML = html;
 }
 
 // 分析シートのグリッドから「院予算」テーブルを探す（[院,月予算,当月実績,達成度,残り,信号]）

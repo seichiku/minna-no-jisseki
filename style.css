@@ -353,3 +353,22 @@ body {
 .rate-bar-fill.green  { background: #16a34a; }
 .rate-bar-fill.yellow { background: #f59e0b; }
 .rate-bar-fill.red    { background: #dc2626; }
+
+/* ===== 院の日次達成ストリップ ===== */
+.daily-row { background: var(--card-bg); border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: 10px; }
+.daily-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+.daily-clinic { font-weight: 700; font-size: 15px; color: var(--text); min-width: 48px; }
+.daily-recent { font-size: 13px; font-weight: 700; padding: 3px 12px; border-radius: 14px; color: #fff; }
+.daily-recent.badge-green  { background: #16a34a; }
+.daily-recent.badge-yellow { background: #f59e0b; }
+.daily-recent.badge-red    { background: #dc2626; }
+.daily-budget { font-size: 11px; color: var(--text-light); margin-left: auto; }
+.day-strip { display: flex; flex-wrap: wrap; gap: 3px; }
+.day-cell { width: 26px; height: 26px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: #fff; }
+.day-cell.day-green  { background: #16a34a; }
+.day-cell.day-yellow { background: #f59e0b; }
+.day-cell.day-red    { background: #dc2626; }
+.day-cell.day-off    { background: #eef1f4; }
+@media (max-width: 600px) {
+  .day-cell { width: 22px; height: 22px; font-size: 9px; }
+}
