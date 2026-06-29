@@ -738,6 +738,10 @@ function renderClinicPages() {
   const churn = flowMetric('離反率');
   const c1 = flowMetric('1ヶ月離反数');
   const c2 = flowMetric('2ヶ月離反数');
+  const fBudget = flowMetric('予算');       // 月次予算
+  const fActual = flowMetric('現在着地');    // 当月実績
+  const fDay = flowMetric('日割予算');       // 日次予算
+  const fRate = flowMetric('現予達率');      // 達成度
   CONFIG.KPI.CLINICS.forEach((name, idx) => {
     const el = document.getElementById('clinicBody' + idx);
     if (!el) return;
@@ -757,7 +761,22 @@ function renderClinicPages() {
         <div class="kpi-card-big">${val} <span class="kpi-card-unit">${sig(band)}</span></div>
         <div class="kpi-card-sub">${sub}</div>
       </div>`;
-    el.innerHTML = `
+    // 院ヒーロー：当月実績（達成度で色分け）＋月次予算＋日次予算
+    const rV = fRate ? (parseFloat(String(fRate[name]).replace(/[^0-9.\-]/g, '')) || 0) : 0;
+    const rB = rV >= 100 ? 'green' : (rV >= 80 ? 'yellow' : 'red');
+    const hero = `
+      <div class="clinic-hero band-${rB}">
+        <div class="clinic-hero-main">
+          <div class="clinic-hero-label">当月実績</div>
+          <div class="clinic-hero-value">${fActual ? kpiDisp(fActual[name]) : '—'}</div>
+          <div class="clinic-hero-rate">達成度 ${fRate ? kpiDisp(fRate[name]) : '—'} <span>${sig(rB)}</span></div>
+        </div>
+        <div class="clinic-hero-sub">
+          <div class="clinic-hero-item"><span>月次予算</span><b>${fBudget ? kpiDisp(fBudget[name]) : '—'}</b></div>
+          <div class="clinic-hero-item"><span>日次予算</span><b>${fDay ? kpiDisp(fDay[name]) : '—'}</b></div>
+        </div>
+      </div>`;
+    el.innerHTML = hero + `
       <div class="kpi-block">
         <h3 class="kpi-h">日次達成（毎日の予算達成）<span class="kpi-tag live">LIVE</span></h3>
         <p class="section-desc" style="margin:0 0 10px;">当日院売上 ÷ 日割予算。🟢100%以上 / 🟡80-99% / 🔴79%以下。空欄＝休診/未到来。</p>

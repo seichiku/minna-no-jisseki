@@ -372,3 +372,26 @@ body {
 @media (max-width: 600px) {
   .day-cell { width: 22px; height: 22px; font-size: 9px; }
 }
+
+/* ===== 各院ヒーロー（当月実績・月次予算・日次予算） ===== */
+.clinic-hero { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; border-radius: 16px; padding: 22px 28px; margin-bottom: 22px; box-shadow: var(--shadow); border: 1px solid var(--border); }
+.clinic-hero.band-green  { background: #e9f9ef; border-left: 8px solid #16a34a; }
+.clinic-hero.band-yellow { background: #fff7e0; border-left: 8px solid #f59e0b; }
+.clinic-hero.band-red    { background: #fdecec; border-left: 8px solid #dc2626; }
+.clinic-hero-main { display: flex; flex-direction: column; }
+.clinic-hero-label { font-size: 14px; font-weight: 600; color: var(--text-light); }
+.clinic-hero-value { font-size: 46px; font-weight: 800; line-height: 1.1; }
+.clinic-hero.band-green  .clinic-hero-value { color: #15803d; }
+.clinic-hero.band-yellow .clinic-hero-value { color: #b45309; }
+.clinic-hero.band-red    .clinic-hero-value { color: #b91c1c; }
+.clinic-hero-rate { font-size: 16px; font-weight: 700; color: var(--text); margin-top: 4px; }
+.clinic-hero-sub { display: flex; gap: 28px; margin-left: auto; flex-wrap: wrap; }
+.clinic-hero-item { display: flex; flex-direction: column; }
+.clinic-hero-item span { font-size: 12px; color: var(--text-light); font-weight: 600; }
+.clinic-hero-item b { font-size: 22px; font-weight: 800; color: var(--text); }
+@media (max-width: 600px) {
+  .clinic-hero { gap: 14px; padding: 16px 18px; }
+  .clinic-hero-value { font-size: 34px; }
+  .clinic-hero-sub { margin-left: 0; gap: 18px; }
+  .clinic-hero-item b { font-size: 18px; }
+}
