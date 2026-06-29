@@ -745,11 +745,18 @@ function renderClinicPages() {
       el.innerHTML = `<div class="kpi-note">${name}院の指標を表示するには、分析シートを @seichiku.org に閲覧共有してください。</div>`;
       return;
     }
-    // 鍼灸受診率の色（目標60%）／離反率の色（目標8%以下）
+    // 鍼灸受診率の色（目標60%）／離反率の色（目標8%以下）。離反数は離反率と同じ健全度バンド。
     const acuV = acu ? kpiNum(acu[name]) : 0;
     const acuBand = acuV >= 60 ? 'green' : (acuV >= 40 ? 'yellow' : 'red');
     const chV = churn ? kpiNum(churn[name]) : 0;
     const chBand = chV <= 8 ? 'green' : (chV <= 12 ? 'yellow' : 'red');
+    const sig = b => b === 'green' ? '🟢' : (b === 'yellow' ? '🟡' : '🔴');
+    const card = (band, label, val, sub) => `
+      <div class="kpi-card budget-${band}">
+        <div class="kpi-card-label">${label}</div>
+        <div class="kpi-card-big">${val} <span class="kpi-card-unit">${sig(band)}</span></div>
+        <div class="kpi-card-sub">${sub}</div>
+      </div>`;
     el.innerHTML = `
       <div class="kpi-block">
         <h3 class="kpi-h">日次達成（毎日の予算達成）<span class="kpi-tag live">LIVE</span></h3>
@@ -759,22 +766,10 @@ function renderClinicPages() {
       <div class="kpi-block">
         <h3 class="kpi-h">月次指標<span class="kpi-tag live">LIVE</span></h3>
         <div class="kpi-cards">
-          <div class="kpi-card">
-            <div class="kpi-card-label">鍼灸受診率（目標60%）</div>
-            <div class="kpi-card-big" style="color:${acuBand==='green'?'#15803d':acuBand==='yellow'?'#b45309':'#b91c1c'}">${acu?kpiDisp(acu[name]):'—'}</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-card-label">離反率（目標8%以下）</div>
-            <div class="kpi-card-big" style="color:${chBand==='green'?'#15803d':chBand==='yellow'?'#b45309':'#b91c1c'}">${churn?kpiDisp(churn[name]):'—'}</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-card-label">1ヶ月離反数</div>
-            <div class="kpi-card-big">${c1?kpiDisp(c1[name]):'—'}</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-card-label">2ヶ月離反数</div>
-            <div class="kpi-card-big">${c2?kpiDisp(c2[name]):'—'}</div>
-          </div>
+          ${card(acuBand, '鍼灸受診率', acu ? kpiDisp(acu[name]) : '—', '目標60%以上')}
+          ${card(chBand, '離反率', churn ? kpiDisp(churn[name]) : '—', '目標8%以下')}
+          ${card(chBand, '1ヶ月離反数', c1 ? kpiDisp(c1[name]) : '—', '離反の健全度に連動')}
+          ${card(chBand, '2ヶ月離反数', c2 ? kpiDisp(c2[name]) : '—', '離反の健全度に連動')}
         </div>
       </div>`;
   });
