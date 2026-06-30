@@ -638,6 +638,7 @@ let kpiKaisu = null;    // 回数券台帳サマリー grid
 let kpiAnalysis = null; // 分析シート「分析」タブ grid（院予算ブロック）
 let kpiFlow = null;     // 分析シート「フロー（3院）」タブ grid（予約率）
 let kpiDaily = null;    // 分析シート「日次達成」タブ grid（院別・毎日の予算達成）
+let kpiTactics = null;  // 分析シート「戦術（先行指標）」タブ grid（転換提案/LINE発信/ロープレ）
 let kpiAccessError = false;   // ストック(会員/回数券)共有エラー
 let kpiFlowError = false;     // 分析シート共有エラー
 
@@ -669,6 +670,13 @@ async function loadKpiData() {
   } catch (err) {
     console.warn('分析シート読込失敗（共有未設定の可能性）:', err);
     kpiFlowError = true;
+  }
+  // 戦術（先行指標）：転換提案/LINE発信/ロープレ（取得できなくても他は出す）
+  try {
+    kpiTactics = await fetchSheet(CONFIG.KPI.ANALYSIS_ID, CONFIG.KPI.TACTICS_TAB, 'A1:F8');
+  } catch (err) {
+    console.warn('戦術(先行指標)読込失敗:', err);
+    kpiTactics = null;
   }
 }
 
@@ -931,21 +939,41 @@ function renderKpiLeading() {
   let closing = 0;
   (dailyRecords || []).forEach(r => { if (inThisMonth(r.date)) closing += kpiNum(r.closingCount); });
 
+  // 戦術（先行指標）タブから 全社合計＋目標 を取得
+  function tRow(label) {
+    if (!kpiTactics) return null;
+    for (const r of kpiTactics) { if (r && String(r[0] || '').trim() === label) return r; }
+    return null;
+  }
+  function tacticCard(title, label) {
+    const r = tRow(label);
+    if (r) {
+      const val = kpiDisp(r[4]);  // E列=全社
+      const g = String(r[5] == null ? '' : r[5]).trim();  // F列=目標(月)
+      const goal = (g === '' || g === '—') ? '' : `<span class="kpi-card-unit"> / 目標 ${g}</span>`;
+      return `<div class="kpi-card">
+          <div class="kpi-card-label">${title}</div>
+          <div class="kpi-card-big">${val}${goal}</div>
+          <div class="kpi-card-sub"><span class="kpi-tag live">LIVE</span></div>
+        </div>`;
+    }
+    return `<div class="kpi-card">
+        <div class="kpi-card-label">${title}</div>
+        <div class="kpi-card-big muted">—</div>
+        <div class="kpi-card-sub"><span class="kpi-tag wait">戦術ダッシュボード連携待ち</span></div>
+      </div>`;
+  }
+
   let html = `
     <div class="kpi-card">
       <div class="kpi-card-label">次予約クロージング（今月）</div>
       <div class="kpi-card-big">${closing}<span class="kpi-card-unit">件</span></div>
       <div class="kpi-card-sub"><span class="kpi-tag live">LIVE</span></div>
     </div>`;
-  // まだソースの無い先行指標（日報項目追加で充填）。院別の鍼灸受診率/リピート/離反は各院ページへ。
-  ['サブ提案件数', 'LINE・対面接点（目標50人）', 'ロープレ実施'].forEach(label => {
-    html += `
-      <div class="kpi-card">
-        <div class="kpi-card-label">${label}</div>
-        <div class="kpi-card-big muted">—</div>
-        <div class="kpi-card-sub"><span class="kpi-tag wait">日報項目追加で充填</span></div>
-      </div>`;
-  });
+  // 戦術ダッシュボード（先行指標）ライブ：転換提案/LINE発信/ロープレ（全社）
+  html += tacticCard('転換 提案数（全社・今月）', '転換 提案数');
+  html += tacticCard('LINE 発信数（全社・今月）', 'LINE 発信数');
+  html += tacticCard('ロープレ 実施数（全社・今月）', 'ロープレ 実施数');
   el.innerHTML = html;
 }
 
