@@ -3,11 +3,19 @@
 // ============================================================
 
 const CONFIG = {
-  // Google OAuth Client ID（Google Cloud Console で作成）
-  // 手順: https://console.cloud.google.com → APIとサービス → 認証情報 → OAuth 2.0 クライアントID
+  // Google OAuth Client ID（ID確認＝Sign in with Google 専用に使用）
+  // ※ 機密スコープ（spreadsheets）は要求しないため「このアプリはGoogleで
+  //    確認されていません」警告は表示されない。
   GOOGLE_CLIENT_ID: '248673786507-mdqci7it6nokcerj001k226k6fungjeu.apps.googleusercontent.com',
 
+  // Apps Script ウェブアプリのURL（データ中継API）
+  // apps-script/Code.gs をデプロイして得た /exec URL を貼る。
+  // 全シートの読み取りはこのサーバー側で行い、ブラウザには spreadsheets 権限を
+  // 一切要求しない（＝未確認アプリ警告を回避）。各シートのスタッフ個別共有も不要。
+  APPS_SCRIPT_URL: 'YOUR_APPS_SCRIPT_WEB_APP_URL',
+
   // ログインを許可するドメイン（空配列 [] なら全Googleアカウント許可）
+  // ※ 正式な判定は Apps Script 側でも行う（クライアント側は早期チェック用）。
   ALLOWED_DOMAINS: ['seichiku.org'],
 
   // 日報データベース スプレッドシートID

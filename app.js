@@ -3,37 +3,35 @@
 // v2.0：1日3患者構造対応 / サンクス修正 / 深掘り症例タブ追加
 // ============================================================
 
-let accessToken = null;
+let __bundle = null;    // 中継APIから取得したシート束 { "<id>|<name>": [[...]] }
 let caseRecords = [];   // 患者単位（1日報3患者を展開）
 let dailyRecords = [];  // 日報単位（喜びの声・症状カテゴリ集計用）
 let thanksData = [];
 let deepDiveData = [];
 let activeCategory = 'all';
 
-// ── Google Sign-In ──
+// ── Google Sign-In（ID token 方式：機密スコープ不要＝未確認アプリ警告なし）──
+// 認証は「Googleでログイン」の ID 確認のみ。スプレッドシートの読み取りは
+// Apps Script ウェブアプリ経由で行い、ブラウザには spreadsheets 権限を要求しない。
 window.onload = function () {
-  if (CONFIG.GOOGLE_CLIENT_ID === 'YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com') {
-    document.getElementById('loginError').textContent =
-      'config.js の GOOGLE_CLIENT_ID を設定してください';
-    document.getElementById('loginError').style.display = 'block';
+  if (!CONFIG.GOOGLE_CLIENT_ID || CONFIG.GOOGLE_CLIENT_ID.indexOf('YOUR_') === 0) {
+    showLoginError('config.js の GOOGLE_CLIENT_ID を設定してください');
+    return;
+  }
+  if (!CONFIG.APPS_SCRIPT_URL || CONFIG.APPS_SCRIPT_URL.indexOf('YOUR_') === 0) {
+    showLoginError('config.js の APPS_SCRIPT_URL を設定してください');
     return;
   }
 
-  google.accounts.oauth2.initTokenClient({
+  google.accounts.id.initialize({
     client_id: CONFIG.GOOGLE_CLIENT_ID,
-    scope: 'https://www.googleapis.com/auth/spreadsheets.readonly',
-    callback: handleTokenResponse,
-    error_callback: (err) => {
-      showLoginError('ログインに失敗しました: ' + (err.message || err.type));
-    }
+    callback: handleCredential,
+    auto_select: false,
   });
-
-  document.getElementById('googleSignInBtn').innerHTML = `
-    <button class="google-btn" onclick="requestLogin()">
-      <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
-      Googleアカウントでログイン
-    </button>
-  `;
+  google.accounts.id.renderButton(
+    document.getElementById('googleSignInBtn'),
+    { theme: 'outline', size: 'large', type: 'standard', text: 'signin_with', shape: 'pill', locale: 'ja' }
+  );
 
   // Tab switching
   document.querySelectorAll('.nav-tab').forEach(tab => {
@@ -56,58 +54,53 @@ window.onload = function () {
   if (ddPeriod) ddPeriod.addEventListener('change', renderDeepDive);
 };
 
-let tokenClient;
-
-function requestLogin() {
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: CONFIG.GOOGLE_CLIENT_ID,
-    scope: 'https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/userinfo.profile',
-    callback: handleTokenResponse,
-  });
-  tokenClient.requestAccessToken();
+// JWT（ID token）のペイロードをデコード（署名検証はサーバー側で実施）
+function decodeJwt(token) {
+  try {
+    const part = token.split('.')[1];
+    const b64 = part.replace(/-/g, '+').replace(/_/g, '/');
+    const json = decodeURIComponent(
+      atob(b64).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')
+    );
+    return JSON.parse(json);
+  } catch (e) {
+    return null;
+  }
 }
 
-async function handleTokenResponse(response) {
-  if (response.error) {
-    showLoginError('認証エラー: ' + response.error);
+async function handleCredential(response) {
+  const credential = response && response.credential;
+  if (!credential) {
+    showLoginError('ログインに失敗しました。もう一度お試しください。');
     return;
   }
 
-  accessToken = response.access_token;
-
-  try {
-    const userRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: { 'Authorization': 'Bearer ' + accessToken }
-    });
-    const user = await userRes.json();
-
-    if (CONFIG.ALLOWED_DOMAINS.length > 0) {
-      const domain = user.email.split('@')[1];
-      if (!CONFIG.ALLOWED_DOMAINS.includes(domain)) {
-        showLoginError(`${domain} ドメインではログインできません。@seichiku.org アカウントを使用してください。`);
-        accessToken = null;
-        return;
-      }
+  // クライアント側の早期チェック（正式な検証は Apps Script 側で実施）
+  const claims = decodeJwt(credential);
+  if (claims && CONFIG.ALLOWED_DOMAINS.length > 0) {
+    const domain = (claims.email || '').split('@')[1];
+    if (!CONFIG.ALLOWED_DOMAINS.includes(domain)) {
+      showLoginError(`${domain} ドメインではログインできません。@seichiku.org アカウントを使用してください。`);
+      google.accounts.id.disableAutoSelect();
+      return;
     }
-
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('mainApp').style.display = 'block';
-    document.getElementById('userInfo').innerHTML = `
-      <img src="${user.picture || ''}" alt="" class="user-avatar">
-      <span class="user-name">${user.name}</span>
-      <button class="logout-btn" onclick="logout()">ログアウト</button>
-    `;
-
-    await loadAllData();
-
-  } catch (err) {
-    showLoginError('ユーザー情報の取得に失敗しました');
   }
+
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('mainApp').style.display = 'block';
+  document.getElementById('userInfo').innerHTML = `
+    <img src="${(claims && claims.picture) || ''}" alt="" class="user-avatar">
+    <span class="user-name">${escHtml((claims && claims.name) || '')}</span>
+    <button class="logout-btn" onclick="logout()">ログアウト</button>
+  `;
+
+  await loadAllData(credential);
 }
 
 function logout() {
-  accessToken = null;
-  google.accounts.oauth2.revoke(accessToken);
+  google.accounts.id.disableAutoSelect();
+  __bundle = null;
+  caseRecords = []; dailyRecords = []; thanksData = []; deepDiveData = [];
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('mainApp').style.display = 'none';
 }
@@ -119,11 +112,37 @@ function showLoginError(msg) {
 }
 
 // ── Data Loading ──
-async function loadAllData() {
+// Apps Script ウェブアプリに ID token を渡し、必要な全シートを一括取得する。
+// Content-Type を text/plain にすることで CORS プリフライト（OPTIONS）を回避する。
+async function loadAllData(credential) {
   const loading = document.getElementById('loadingIndicator');
   loading.style.display = 'flex';
 
   try {
+    const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: credential,
+    });
+    if (!res.ok) throw new Error('サーバーへの接続に失敗しました');
+    const data = await res.json();
+
+    if (!data || !data.ok) {
+      const code = data && data.error;
+      if (code === 'domain_forbidden' || code === 'aud_mismatch' ||
+          code === 'invalid_token' || code === 'email_unverified') {
+        // 認証系エラー：ログイン画面へ戻す
+        document.getElementById('mainApp').style.display = 'none';
+        document.getElementById('loginScreen').style.display = 'flex';
+        showLoginError('ログインが確認できませんでした。@seichiku.org アカウントで再度お試しください。');
+        google.accounts.id.disableAutoSelect();
+        return;
+      }
+      throw new Error(code || 'データの取得に失敗しました');
+    }
+
+    __bundle = data.sheets || {};
+
     // loadCaseData は先行指標「次予約クロージング」用に保持（症例タブは非表示）
     await Promise.all([loadCaseData(), loadKpiData(), loadPersonalRanking()]);
     renderKpi();
@@ -135,18 +154,14 @@ async function loadAllData() {
   }
 }
 
+// 中継APIから取得済みの束（__bundle）からシートを返す（旧: Sheets API 直接読み）。
+// 読み取り失敗（アクセス不可）は null で返るので、その場合は例外にして
+// 呼び出し側の try/catch（「共有してください」表示）に委ねる。range は互換のため受けるが未使用。
 async function fetchSheet(spreadsheetId, sheetName, range) {
-  const fullRange = `${sheetName}!${range}`;
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(fullRange)}`;
-  const res = await fetch(url, {
-    headers: { 'Authorization': 'Bearer ' + accessToken }
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.error?.message || 'シートの読み込みに失敗');
-  }
-  const data = await res.json();
-  return data.values || [];
+  const key = spreadsheetId + '|' + sheetName;
+  const v = __bundle ? __bundle[key] : undefined;
+  if (v == null) throw new Error('シートを取得できませんでした: ' + sheetName);
+  return v;
 }
 
 // ── 日報データ読み込み（1日3患者を展開） ──
