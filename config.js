@@ -12,7 +12,7 @@ const CONFIG = {
   // apps-script/Code.gs をデプロイして得た /exec URL を貼る。
   // 全シートの読み取りはこのサーバー側で行い、ブラウザには spreadsheets 権限を
   // 一切要求しない（＝未確認アプリ警告を回避）。各シートのスタッフ個別共有も不要。
-  APPS_SCRIPT_URL: 'YOUR_APPS_SCRIPT_WEB_APP_URL',
+  APPS_SCRIPT_URL: 'https://script.google.com/macros/s/AKfycbyTUM0MIjYag0sm67laJYlcy-gqhUCK2lRMzjEPQaj61vYEFUECIzn7nidMXK4c5WO5/exec',
 
   // ログインを許可するドメイン（空配列 [] なら全Googleアカウント許可）
   // ※ 正式な判定は Apps Script 側でも行う（クライアント側は早期チェック用）。
