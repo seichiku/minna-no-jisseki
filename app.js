@@ -755,6 +755,111 @@ function dailyStripHtml(clinicName) {
   return '';
 }
 
+// 日次達成タブから1院分の「経過診療日数・総診療日数」を数える
+// （値が入っている日セル＝営業済みの診療日。空欄＝休診/未到来）
+function clinicDayProgress(clinicName) {
+  if (!kpiDaily) return null;
+  let hi = -1;
+  for (let i = 0; i < kpiDaily.length; i++) {
+    if (String((kpiDaily[i] || [])[0]).trim() === '院') { hi = i; break; }
+  }
+  if (hi < 0) return null;
+  for (let i = hi + 1; i < kpiDaily.length; i++) {
+    const r = kpiDaily[i] || [];
+    if (String(r[0] || '').trim() !== clinicName) continue;
+    const total = kpiNum(r[2]) || 0;   // 診療日数
+    let elapsed = 0;
+    for (let d = 1; d <= 31; d++) {
+      const v = r[3 + d];
+      if (v !== undefined && v !== null && String(v).trim() !== '') elapsed++;
+    }
+    return { elapsed, total };
+  }
+  return null;
+}
+
+// 月末着地予測：現ペース（実績÷経過診療日数）×総診療日数
+function forecastHtml(name, fBudget, fActual) {
+  const prog = clinicDayProgress(name);
+  const actual = fActual ? kpiNum(fActual[name]) : 0;
+  const budget = fBudget ? kpiNum(fBudget[name]) : 0;
+  if (!prog || !prog.elapsed || !prog.total || !actual || !budget) {
+    return `
+      <div class="kpi-block">
+        <h3 class="kpi-h">月末着地予測</h3>
+        <div class="kpi-note">データが溜まると表示されます（実績と診療日数から現ペースで予測します）。</div>
+      </div>`;
+  }
+  const forecast = Math.round(actual / prog.elapsed * prog.total);
+  const pct = Math.round(forecast / budget * 100);
+  const band = pct >= 100 ? 'green' : (pct >= 80 ? 'yellow' : 'red');
+  const sig = pct >= 100 ? '🟢' : (pct >= 80 ? '🟡' : '🔴');
+  const remainDays = Math.max(0, prog.total - prog.elapsed);
+  const needPerDay = remainDays > 0 ? Math.max(0, Math.ceil((budget - actual) / remainDays)) : 0;
+  const yen = n => '¥' + Number(n).toLocaleString('ja-JP');
+  const needLine = remainDays === 0
+    ? '今月の診療日は終了しました'
+    : (actual >= budget
+      ? '予算達成済み！このまま上積みを 💪'
+      : `予算まであと ${yen(budget - actual)} ／ 残り${remainDays}診療日 → <b>1日あたり ${yen(needPerDay)}</b> で達成`);
+  return `
+    <div class="kpi-block">
+      <h3 class="kpi-h">月末着地予測<span class="kpi-tag live">LIVE</span></h3>
+      <div class="kpi-card budget-${band}">
+        <div class="kpi-card-label">このペースだと月末着地</div>
+        <div class="kpi-card-big">${yen(forecast)} <span class="kpi-card-unit">予算比 ${pct}% ${sig}</span></div>
+        <div class="kpi-bar"><div class="kpi-bar-fill ${band}" style="width:${Math.min(100, Math.max(0, pct))}%"></div></div>
+        <div class="kpi-card-sub">${needLine}</div>
+        <div class="kpi-card-sub" style="opacity:.7">経過 ${prog.elapsed}/${prog.total} 診療日・毎日13/21時更新</div>
+      </div>
+    </div>`;
+}
+
+// 各院ページの「個人の実績」ブロック（個人ランキングタブを所属院で絞り込み）
+function clinicPersonalHtml(name) {
+  if (kpiPersonalError || !kpiPersonalGrid) return '';
+  let hi = -1;
+  for (let i = 0; i < kpiPersonalGrid.length; i++) {
+    if (String((kpiPersonalGrid[i] || [])[0]).trim() === '順位') { hi = i; break; }
+  }
+  if (hi < 0) return '';
+  const prog = clinicDayProgress(name);
+  const BUDGET = 1200000; // 損益分岐120万（個人ランキングと同じ基準）
+  const yen = n => '¥' + Number(n).toLocaleString('ja-JP');
+  const cards = [];
+  for (let i = hi + 1; i < kpiPersonalGrid.length; i++) {
+    const r = kpiPersonalGrid[i] || [];
+    if (!String(r[1] || '').trim()) break;
+    const clinic = String(r[2] || '').trim();
+    if (!(clinic.includes(name) || name.includes(clinic))) continue;
+    const sales = kpiNum(r[3]);
+    const pct = Math.round(sales / BUDGET * 100);
+    const band = pct >= 100 ? 'green' : (pct >= 80 ? 'yellow' : 'red');
+    const sig = pct >= 100 ? '🟢' : (pct >= 80 ? '🟡' : '🔴');
+    let fcLine = '';
+    if (prog && prog.elapsed > 0 && prog.total > 0 && sales > 0) {
+      const fc = Math.round(sales / prog.elapsed * prog.total);
+      const fcPct = Math.round(fc / BUDGET * 100);
+      const fcSig = fcPct >= 100 ? '🟢' : (fcPct >= 80 ? '🟡' : '🔴');
+      fcLine = `<div class="kpi-card-sub">着地予測 <b>${yen(fc)}</b>（${fcPct}% ${fcSig}）</div>`;
+    }
+    cards.push(`
+      <div class="kpi-card budget-${band}">
+        <div class="kpi-card-label">${escHtml(String(r[1]))}</div>
+        <div class="kpi-card-big">${kpiDisp(r[3])} <span class="kpi-card-unit">${pct}% ${sig}</span></div>
+        <div class="kpi-bar"><div class="kpi-bar-fill ${band}" style="width:${Math.min(100, Math.max(0, pct))}%"></div></div>
+        ${fcLine}
+      </div>`);
+  }
+  if (cards.length === 0) return '';
+  return `
+    <div class="kpi-block">
+      <h3 class="kpi-h">個人の当月実績（この院）<span class="kpi-tag live">LIVE</span></h3>
+      <p class="section-desc" style="margin:0 0 10px;">色分け＝損益分岐120万の達成度（🟢100% / 🟡80-99% / 🔴79%以下）。着地予測＝現ペース×診療日数。</p>
+      <div class="kpi-cards">${cards.join('')}</div>
+    </div>`;
+}
+
 // 各院ページ（南砂/塩浜/東砂）
 function renderClinicPages() {
   const acu = flowMetric('鍼灸受診率');
@@ -799,12 +904,12 @@ function renderClinicPages() {
           <div class="clinic-hero-item"><span>日次予算</span><b>${fDay ? kpiDisp(fDay[name]) : '—'}</b></div>
         </div>
       </div>`;
-    el.innerHTML = hero + `
+    el.innerHTML = hero + forecastHtml(name, fBudget, fActual) + `
       <div class="kpi-block">
         <h3 class="kpi-h">日次達成（毎日の予算達成）<span class="kpi-tag live">LIVE</span></h3>
         <p class="section-desc" style="margin:0 0 10px;">当日院売上 ÷ 日割予算。🟢100%以上 / 🟡80-99% / 🔴79%以下。空欄＝休診/未到来。</p>
         <div class="daily-row">${dailyStripHtml(name) || '<div class="kpi-note">日次データなし</div>'}</div>
-      </div>
+      </div>` + clinicPersonalHtml(name) + `
       <div class="kpi-block">
         <h3 class="kpi-h">月次指標<span class="kpi-tag live">LIVE</span></h3>
         <div class="kpi-cards">
