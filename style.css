@@ -397,8 +397,8 @@ body {
 }
 
 /* 「あと何診療日・1日いくらで100%」ライン（院予算カード／個人カード） */
-.kpi-need { margin-top: 8px; font-size: 13px; font-weight: 700; color: var(--text); background: rgba(0,0,0,0.045); border-radius: 8px; padding: 7px 10px; line-height: 1.55; }
-.kpi-need b { color: var(--primary-dark); }
+.kpi-need { margin-top: 8px; font-size: 15px; font-weight: 700; color: var(--text); background: rgba(0,0,0,0.045); border-radius: 8px; padding: 9px 12px; line-height: 1.6; }
+.kpi-need b { color: #15803d; font-size: 18px; }
 .kpi-need-note { font-size: 11px; font-weight: 500; color: var(--text-light); margin-left: 4px; }
 
 /* 日次達成ヒーロー（直近を大きく＋今月の達成日）＋大きめカレンダー */
