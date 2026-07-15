@@ -740,17 +740,29 @@ function dailyStripHtml(clinicName) {
     const recentPct = parseInt(recent.replace(/[^0-9\-]/g, ''), 10) || 0;
     const rband = band(recentPct);
     let cells = '';
+    let elapsedDays = 0, achievedDays = 0;
     for (let d = 1; d <= 31; d++) {
       const v = r[3 + d];
       const s = (v === undefined || v === null || String(v).trim() === '') ? '' : String(v).trim();
       if (s === '') cells += `<span class="day-cell day-off" title="${d}日 休診/未到来"></span>`;
-      else { const p = parseInt(s.replace(/[^0-9\-]/g, ''), 10) || 0; cells += `<span class="day-cell day-${band(p)}" title="${d}日 ${p}%">${d}</span>`; }
+      else {
+        const p = parseInt(s.replace(/[^0-9\-]/g, ''), 10) || 0;
+        elapsedDays++; if (p >= 100) achievedDays++;
+        cells += `<span class="day-cell day-${band(p)}" title="${d}日 ${p}%">${d}</span>`;
+      }
     }
-    return `<div class="daily-head">
-        <span class="daily-recent badge-${rband}">直近 ${recent || '—'}</span>
-        <span class="daily-budget">日割予算 ${daily}</span>
+    const sig = rband === 'green' ? '🟢' : (rband === 'yellow' ? '🟡' : '🔴');
+    return `<div class="daily-hero band-${rband}">
+        <div class="daily-hero-main">
+          <div class="daily-hero-label">直近の日次達成</div>
+          <div class="daily-hero-value">${recent || '—'} <span>${sig}</span></div>
+        </div>
+        <div class="daily-hero-sub">
+          <div class="daily-hero-item"><span>日割予算</span><b>${daily}</b></div>
+          <div class="daily-hero-item"><span>今月の達成日</span><b>${achievedDays}/${elapsedDays}日 🟢</b></div>
+        </div>
       </div>
-      <div class="day-strip">${cells}</div>`;
+      <div class="day-strip big">${cells}</div>`;
   }
   return '';
 }
@@ -843,12 +855,20 @@ function clinicPersonalHtml(name) {
       const fcSig = fcPct >= 100 ? '🟢' : (fcPct >= 80 ? '🟡' : '🔴');
       fcLine = `<div class="kpi-card-sub">着地予測 <b>${yen(fc)}</b>（${fcPct}% ${fcSig}）</div>`;
     }
+    let needLine = '';
+    if (prog && prog.total > 0) {
+      const remainDays = Math.max(0, prog.total - prog.elapsed);
+      if (sales >= BUDGET) needLine = `<div class="kpi-need">120万達成 💪</div>`;
+      else if (remainDays === 0) needLine = `<div class="kpi-need">今月の診療日は終了</div>`;
+      else needLine = `<div class="kpi-need">残り<b>${remainDays}</b>診療日 → <b>1日 ${yen(Math.ceil((BUDGET - sales) / remainDays))}</b>で120万</div>`;
+    }
     cards.push(`
       <div class="kpi-card budget-${band}">
         <div class="kpi-card-label">${escHtml(String(r[1]))}</div>
         <div class="kpi-card-big">${kpiDisp(r[3])} <span class="kpi-card-unit">${pct}% ${sig}</span></div>
         <div class="kpi-bar"><div class="kpi-bar-fill ${band}" style="width:${Math.min(100, Math.max(0, pct))}%"></div></div>
         ${fcLine}
+        ${needLine}
       </div>`);
   }
   if (cards.length === 0) return '';
@@ -949,7 +969,7 @@ function kpiFindBudget(grid) {
   return null;
 }
 
-// ① 院予算（分析シートからライブ）
+// ① 院予算（分析シートからライブ）＋「あと何診療日・1日いくらで100%」
 function renderKpiBudget() {
   const el = document.getElementById('kpiBudget');
   if (!el) return;
@@ -962,6 +982,33 @@ function renderKpiBudget() {
     el.innerHTML = `<div class="kpi-note">分析シートの院予算データを読み込めませんでした。</div>`;
     return;
   }
+  const yen = n => '¥' + Number(n).toLocaleString('ja-JP');
+  // 院別に「残り診療日・1日必要額」を算出（日次達成タブの診療日数を使用）
+  const need = {};
+  budget.forEach(b => {
+    if (b.name === '全社') return;
+    const prog = clinicDayProgress(b.name);
+    const bud = kpiNum(b.budget), act = kpiNum(b.actual);
+    if (prog && prog.total && bud) {
+      const remainDays = Math.max(0, prog.total - prog.elapsed);
+      const needPerDay = (remainDays > 0 && act < bud) ? Math.ceil((bud - act) / remainDays) : 0;
+      need[b.name] = { remainDays, needPerDay, actual: act, budget: bud };
+    }
+  });
+  const needLineHtml = (name) => {
+    if (name === '全社') {
+      const parts = Object.values(need);
+      if (!parts.length) return '';
+      if (parts.every(p => p.actual >= p.budget)) return `<div class="kpi-need">予算達成済み 💪</div>`;
+      const sumNeed = parts.reduce((s, p) => s + p.needPerDay, 0);
+      return `<div class="kpi-need">3院合計 <b>1日 ${yen(sumNeed)}</b> で予算100%<span class="kpi-need-note">（内訳は各院ページ）</span></div>`;
+    }
+    const n = need[name];
+    if (!n) return '';
+    if (n.actual >= n.budget) return `<div class="kpi-need">予算達成済み 💪</div>`;
+    if (n.remainDays === 0) return `<div class="kpi-need">今月の診療日は終了</div>`;
+    return `<div class="kpi-need">残り<b>${n.remainDays}</b>診療日 → <b>1日 ${yen(n.needPerDay)}</b>で100%</div>`;
+  };
   el.innerHTML = budget.map(b => {
     const raw = parseFloat(String(b.rate).replace(/[^0-9.\-]/g, '')) || 0;
     const band = raw >= 100 ? 'green' : (raw >= 80 ? 'yellow' : 'red');
@@ -972,6 +1019,7 @@ function renderKpiBudget() {
       <div class="kpi-card-big">${kpiDisp(b.rate)} <span class="kpi-card-unit">${b.sig || ''}</span></div>
       <div class="kpi-bar"><div class="kpi-bar-fill ${band}" style="width:${w}%"></div></div>
       <div class="kpi-card-sub">実績 ${kpiDisp(b.actual)} / 予算 ${kpiDisp(b.budget)}</div>
+      ${needLineHtml(b.name)}
     </div>`;
   }).join('');
 }
@@ -1051,13 +1099,6 @@ function renderKpiOrder() {
 function renderKpiLeading() {
   const el = document.getElementById('kpiLeading');
   if (!el) return;
-  const now = new Date();
-  function inThisMonth(d) {
-    const m = String(d).match(/(\d{4})[\/\-.](\d{1,2})/);
-    return m && parseInt(m[1], 10) === now.getFullYear() && parseInt(m[2], 10) === now.getMonth() + 1;
-  }
-  let closing = 0;
-  (dailyRecords || []).forEach(r => { if (inThisMonth(r.date)) closing += kpiNum(r.closingCount); });
 
   // 戦術（先行指標）タブから 全社合計＋目標 を取得
   function tRow(label) {
@@ -1084,14 +1125,8 @@ function renderKpiLeading() {
       </div>`;
   }
 
-  let html = `
-    <div class="kpi-card">
-      <div class="kpi-card-label">次予約クロージング（今月）</div>
-      <div class="kpi-card-big">${closing}<span class="kpi-card-unit">件</span></div>
-      <div class="kpi-card-sub"><span class="kpi-tag live">LIVE</span></div>
-    </div>`;
   // 戦術ダッシュボード（先行指標）ライブ：転換提案/LINE発信/ロープレ（全社）
-  html += tacticCard('転換 提案数（全社・今月）', '転換 提案数');
+  let html = tacticCard('転換 提案数（全社・今月）', '転換 提案数');
   html += tacticCard('LINE 発信数（全社・今月）', 'LINE 発信数');
   html += tacticCard('ロープレ 実施数（全社・今月）', 'ロープレ 実施数');
   el.innerHTML = html;

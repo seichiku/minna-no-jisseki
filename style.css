@@ -395,3 +395,31 @@ body {
   .clinic-hero-sub { margin-left: 0; gap: 18px; }
   .clinic-hero-item b { font-size: 18px; }
 }
+
+/* 「あと何診療日・1日いくらで100%」ライン（院予算カード／個人カード） */
+.kpi-need { margin-top: 8px; font-size: 13px; font-weight: 700; color: var(--text); background: rgba(0,0,0,0.045); border-radius: 8px; padding: 7px 10px; line-height: 1.55; }
+.kpi-need b { color: var(--primary-dark); }
+.kpi-need-note { font-size: 11px; font-weight: 500; color: var(--text-light); margin-left: 4px; }
+
+/* 日次達成ヒーロー（直近を大きく＋今月の達成日）＋大きめカレンダー */
+.daily-hero { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; border: 1px solid var(--border); }
+.daily-hero.band-green  { background: #e9f9ef; border-left: 6px solid #16a34a; }
+.daily-hero.band-yellow { background: #fff7e0; border-left: 6px solid #f59e0b; }
+.daily-hero.band-red    { background: #fdecec; border-left: 6px solid #dc2626; }
+.daily-hero-main { display: flex; flex-direction: column; }
+.daily-hero-label { font-size: 12px; font-weight: 600; color: var(--text-light); }
+.daily-hero-value { font-size: 34px; font-weight: 800; line-height: 1.1; }
+.daily-hero.band-green  .daily-hero-value { color: #15803d; }
+.daily-hero.band-yellow .daily-hero-value { color: #b45309; }
+.daily-hero.band-red    .daily-hero-value { color: #b91c1c; }
+.daily-hero-sub { display: flex; gap: 22px; margin-left: auto; flex-wrap: wrap; }
+.daily-hero-item { display: flex; flex-direction: column; }
+.daily-hero-item span { font-size: 11px; color: var(--text-light); font-weight: 600; }
+.daily-hero-item b { font-size: 18px; font-weight: 800; color: var(--text); }
+.day-strip.big { gap: 5px; }
+.day-strip.big .day-cell { width: 34px; height: 34px; font-size: 12px; border-radius: 7px; }
+@media (max-width: 600px) {
+  .daily-hero-value { font-size: 28px; }
+  .daily-hero-sub { margin-left: 0; gap: 16px; }
+  .day-strip.big .day-cell { width: 28px; height: 28px; font-size: 10px; }
+}
