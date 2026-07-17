@@ -656,6 +656,8 @@ let kpiDaily = null;    // 分析シート「日次達成」タブ grid（院別
 let kpiTactics = null;  // 分析シート「戦術（先行指標）」タブ grid（転換提案/LINE発信/ロープレ）
 let kpiAccessError = false;   // ストック(会員/回数券)共有エラー
 let kpiFlowError = false;     // 分析シート共有エラー
+let kpiMaster = null;         // 顧客マスタ「顧客マスタ」grid（離客フォローリスト用）
+let kpiMasterError = false;   // 顧客マスタ共有エラー
 
 async function loadKpiData() {
   // ストック（会員名簿・回数券台帳）
@@ -693,6 +695,15 @@ async function loadKpiData() {
     console.warn('戦術(先行指標)読込失敗:', err);
     kpiTactics = null;
   }
+  // 顧客マスタ（離客フォローリスト：氏名×院×最終来院日）
+  try {
+    kpiMaster = await fetchSheet(CONFIG.RIHAN.MASTER_ID, CONFIG.RIHAN.MASTER_SHEET, 'A:N');
+    kpiMasterError = false;
+  } catch (err) {
+    console.warn('顧客マスタ読込失敗（共有未設定の可能性）:', err);
+    kpiMaster = null;
+    kpiMasterError = true;
+  }
 }
 
 function kpiFindRow(grid, val) {
@@ -721,6 +732,72 @@ function flowMetric(label) {
     }
   }
   return null;
+}
+
+// ── 離客フォローリスト（顧客マスタの最終来院日から院別に算出） ──
+// 顧客マスタの最終来院日（表示文字列）を Date に。パースできなければ null
+function parseVisitDate(s) {
+  if (!s) return null;
+  const str = String(s).trim();
+  if (!str) return null;
+  const m = str.match(/^(\d{4})[\/\-年](\d{1,2})[\/\-月](\d{1,2})/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3]);
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
+}
+
+// 院ごとの離客リスト（区間）を顧客マスタから算出 → {m1:[{name,days}], m2:[...]}
+function rihanBuckets(clinicName) {
+  const out = { m1: [], m2: [] };
+  if (!kpiMaster || kpiMaster.length < 2) return out;
+  const C = CONFIG.RIHAN.COL, R = CONFIG.RIHAN;
+  const today = new Date();
+  const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  for (let i = 1; i < kpiMaster.length; i++) {
+    const row = kpiMaster[i] || [];
+    const clinic = String(row[C.clinic] || '').trim();
+    if (!clinic || !(clinic === clinicName || clinic.includes(clinicName) || clinicName.includes(clinic))) continue;
+    const name = String(row[C.name] || '').trim();
+    if (!name) continue;
+    const d = parseVisitDate(row[C.lastVisit]);
+    if (!d) continue;
+    const days = Math.floor((t0 - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
+    if (days >= R.M1_MIN && days <= R.M1_MAX) out.m1.push({ name, days });
+    else if (days >= R.M2_MIN && days <= R.M2_MAX) out.m2.push({ name, days });
+  }
+  out.m1.sort((a, b) => a.days - b.days);
+  out.m2.sort((a, b) => a.days - b.days);
+  return out;
+}
+
+// 離客フォローリストのHTML（1院分）
+function rihanListHtml(clinicName) {
+  if (kpiMasterError) {
+    return `
+      <div class="kpi-block">
+        <h3 class="kpi-h">離客フォローリスト</h3>
+        <div class="kpi-note">顧客マスタを @seichiku.org（中継API実行アカウント）に閲覧共有すると表示されます。</div>
+      </div>`;
+  }
+  const b = rihanBuckets(clinicName);
+  const chips = arr => arr.length
+    ? `<div class="rihan-names">${arr.map(x => `<span class="rihan-chip">${escHtml(x.name)}<i>${x.days}日</i></span>`).join('')}</div>`
+    : `<div class="rihan-empty">現在該当なし</div>`;
+  return `
+    <div class="kpi-block">
+      <h3 class="kpi-h">離客フォローリスト<span class="kpi-tag live">LIVE</span></h3>
+      <p class="section-desc" style="margin:0 0 10px;">顧客マスタの最終来院日から算出（カッコ内は最終来院からの経過日数）。声かけ・フォローの対象です。<br>※最終来院日は2026年7月の日計表稼働後に蓄積されるため、リストが揃うのは8〜9月以降になります。</p>
+      <div class="rihan-lists">
+        <div class="rihan-col">
+          <div class="rihan-col-head">1ヶ月離客 <span class="rihan-range">最終来院30〜59日</span><b>${b.m1.length}名</b></div>
+          ${chips(b.m1)}
+        </div>
+        <div class="rihan-col">
+          <div class="rihan-col-head">2ヶ月離客 <span class="rihan-range">最終来院60〜89日</span><b>${b.m2.length}名</b></div>
+          ${chips(b.m2)}
+        </div>
+      </div>
+    </div>`;
 }
 
 // 日次達成タブから1院分の日次ストリップHTMLを返す
@@ -938,7 +1015,7 @@ function renderClinicPages() {
           ${card(chBand, '1ヶ月離反数', c1 ? kpiDisp(c1[name]) : '—', '離反の健全度に連動')}
           ${card(chBand, '2ヶ月離反数', c2 ? kpiDisp(c2[name]) : '—', '離反の健全度に連動')}
         </div>
-      </div>`;
+      </div>` + rihanListHtml(name);
   });
 }
 
