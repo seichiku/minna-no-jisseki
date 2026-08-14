@@ -1023,7 +1023,8 @@ function renderKpiFlowTable() {
   const el = document.getElementById('kpiFlowTable');
   if (!el) return;
   if (kpiFlowError || !kpiFlow) { el.innerHTML = `<div class="kpi-note">分析シートの共有が必要です。</div>`; return; }
-  const ROWS = ['患者数(今月)', '新患数', '再診数', '既存数', '事前予約(翌日計)', '一人生産性', '鍼灸受診率', '鍼灸受診率(施術ベース)', 'ベッド稼働率'];
+  // 2026-08-14: 鍼灸受診率はチーム実績では非表示（各院ページで施術ベースを表示）→代わりにLTV
+  const ROWS = ['患者数(今月)', '新患数', '再診数', '既存数', '事前予約(翌日計)', '一人生産性', 'LTV', 'ベッド稼働率'];
   const found = [];
   ROWS.forEach(label => {
     for (const r of kpiFlow) {
@@ -1219,6 +1220,50 @@ function forecastHtml(name) {
     </div>`;
 }
 
+// 院ごとの重点KPI（南砂=客単価／塩浜=通院頻度。Notion現状分析 2026-07 より）
+function focusKpiHtml(name) {
+  const num = v => parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')) || 0;
+  const sig = b => b === 'green' ? '🟢' : (b === 'yellow' ? '🟡' : '🔴');
+  const cardHtml = (band, label, val, sub) => `
+    <div class="kpi-card budget-${band}">
+      <div class="kpi-card-label">${label}</div>
+      <div class="kpi-card-big">${val} <span class="kpi-card-unit">${sig(band)}</span></div>
+      <div class="kpi-card-sub">${sub}</div>
+    </div>`;
+  const cards = [];
+  if (name === '南砂') {
+    const t = flowMetric('客単価');
+    if (t && String(t[name] || '').trim() !== '' && t[name] !== '—') {
+      const v = num(t[name]);
+      const band = v >= 3500 ? 'green' : (v >= 3300 ? 'yellow' : 'red');
+      cards.push(cardHtml(band, '客単価（売上÷延べ来院）', kpiDisp(t[name]),
+        '目安 ¥3,500＝150万に必要な単価。グループ上限¥3,300の壁を破る（自費オプション・回数券・サブスクの一言提案）'));
+    }
+  }
+  if (name === '塩浜') {
+    const f1 = flowMetric('初再診 通院頻度');
+    if (f1 && String(f1[name] || '').trim() !== '' && f1[name] !== '—') {
+      const v1 = num(f1[name]);
+      const b1 = v1 >= 2.5 ? 'green' : (v1 >= 2.0 ? 'yellow' : 'red');
+      cards.push(cardHtml(b1, '初再診の通院頻度', kpiDisp(f1[name]),
+        '当月に初診・再診で来た方の平均来院回数。1回台＝「初回の壁」で消えている（新患の48%が初月のみの構造）'));
+    }
+    const f2 = flowMetric('通院頻度(全患者)');
+    if (f2 && String(f2[name] || '').trim() !== '' && f2[name] !== '—') {
+      const v2 = num(f2[name]);
+      const b2 = v2 >= 4.6 ? 'green' : (v2 >= 4.0 ? 'yellow' : 'red');
+      cards.push(cardHtml(b2, '通院頻度（全患者）', kpiDisp(f2[name]),
+        '目標 4.6回/人（南砂水準）。南砂との売上差の約8割はこの差'));
+    }
+  }
+  if (!cards.length) return '';
+  return `
+    <div class="kpi-block">
+      <h3 class="kpi-h">この院の重点KPI<span class="kpi-tag live">LIVE</span></h3>
+      <div class="kpi-cards" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));">${cards.join('')}</div>
+    </div>`;
+}
+
 // 院別ペースチャート（1院分＋昨年着地の参照線）
 function clinicChartHtml(name) {
   const s = clinicCumSeries(name);
@@ -1334,7 +1379,7 @@ function clinicPersonalHtml(name) {
 
 // 各院ページ（南砂/塩浜/東砂）
 function renderClinicPages() {
-  const acu = flowMetric('鍼灸受診率');
+  const acu = flowMetric('鍼灸受診率(施術ベース)');   // 2026-08-14: 施術ベース（鍼✔or灸✔）に変更
   const churn = flowMetric('離反率');
   const c1 = flowMetric('1ヶ月離反数');
   const c2 = flowMetric('2ヶ月離反数');
@@ -1347,9 +1392,11 @@ function renderClinicPages() {
       return;
     }
     // 鍼灸受診率の色（目標60%）／離反率の色（目標8%以下）。離反数は離反率と同じ健全度バンド。
-    const acuV = acu ? kpiNum(acu[name]) : 0;
+    // ※kpiNumは「43.8%」を438にしてしまうためパーセント値はfloatでパースする（2026-08-14修正）
+    const pctNum = v => parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')) || 0;
+    const acuV = acu ? pctNum(acu[name]) : 0;
     const acuBand = acuV >= 60 ? 'green' : (acuV >= 40 ? 'yellow' : 'red');
-    const chV = churn ? kpiNum(churn[name]) : 0;
+    const chV = churn ? pctNum(churn[name]) : 0;
     const chBand = chV <= 8 ? 'green' : (chV <= 12 ? 'yellow' : 'red');
     const sig = b => b === 'green' ? '🟢' : (b === 'yellow' ? '🟡' : '🔴');
     const card = (band, label, val, sub) => `
@@ -1379,7 +1426,7 @@ function renderClinicPages() {
           <div class="clinic-hero-item"><span>今日までの予定</span><b>${p ? yenFmt(p.paceTarget) : '—'}</b></div>
         </div>
       </div>`;
-    el.innerHTML = hero + forecastHtml(name) + clinicChartHtml(name) + `
+    el.innerHTML = hero + focusKpiHtml(name) + forecastHtml(name) + clinicChartHtml(name) + `
       <div class="kpi-block">
         <h3 class="kpi-h">日次達成（毎日の予算達成）<span class="kpi-tag live">LIVE</span></h3>
         <p class="section-desc" style="margin:0 0 10px;">当日院売上 ÷ 日割予算。🟢100%以上 / 🟡80-99% / 🔴79%以下。空欄＝休診/未到来。</p>
@@ -1388,7 +1435,7 @@ function renderClinicPages() {
       <div class="kpi-block">
         <h3 class="kpi-h">月次指標<span class="kpi-tag live">LIVE</span></h3>
         <div class="kpi-cards">
-          ${card(acuBand, '鍼灸受診率', acu ? kpiDisp(acu[name]) : '—', '目標60%以上')}
+          ${card(acuBand, '鍼灸受診率（施術ベース）', acu ? kpiDisp(acu[name]) : '—', '鍼✔・灸✔ベース／目標60%以上')}
           ${card(chBand, '離反率', churn ? kpiDisp(churn[name]) : '—', '目標8%以下')}
           ${card(chBand, '1ヶ月離反数', c1 ? kpiDisp(c1[name]) : '—', '離反の健全度に連動')}
           ${card(chBand, '2ヶ月離反数', c2 ? kpiDisp(c2[name]) : '—', '離反の健全度に連動')}
@@ -1620,7 +1667,7 @@ function renderPersonalRanking() {
   let html = `<div class="rank-table-wrap"><table class="rank-table">
     <thead><tr>
       <th>順位</th><th>施術者</th><th>所属院</th><th>個人売上(月)</th>
-      <th>マイルストーン</th><th>着地予測</th><th>自己ベスト</th><th>稼働率</th><th>人時(円/h)</th>
+      <th>マイルストーン</th><th>着地予測</th><th>単価</th><th>全患者数</th><th>通院頻度</th><th>自己ベスト</th><th>稼働率</th><th>人時(円/h)</th>
     </tr></thead><tbody>`;
   rows.forEach(r => {
     const staff = String(r[1] || '').trim();
@@ -1649,12 +1696,15 @@ function renderPersonalRanking() {
         <span class="rank-next">${nextLabel}</span>
       </td>
       <td>${fcCell}</td>
+      <td>${kpiDisp(r[9])}</td>
+      <td>${kpiDisp(r[10])}</td>
+      <td>${kpiDisp(r[11])}</td>
       <td>${bestCell}</td>
       <td>${kpiDisp(r[7])}</td>
       <td>${kpiDisp(r[8])}</td>
     </tr>`;
   });
   html += `</tbody></table></div>
-    <p class="section-desc" style="margin-top:12px;">※マイルストーン＝30万刻み→120万（損益分岐）→150万（余剰30万）。色分け＝現ペースの着地で次のマイルストーンに届くか（🟢届く / 🟡あと少し / 🔴要ペースアップ）。自己ベスト＝過去アーカイブ（2024-01〜2026-01）の最高月。昇給は個人120万達成＋チーム(院)予算達成が条件。有山さん(管理部)は施術者集計の対象外です。</p>`;
+    <p class="section-desc" style="margin-top:12px;">※マイルストーン＝30万刻み→120万（損益分岐）→150万（余剰30万）。色分け＝現ペースの着地で次のマイルストーンに届くか（🟢届く / 🟡あと少し / 🔴要ペースアップ）。単価＝個人売上÷のべ担当／全患者数＝主担当ベースの実人数／通院頻度＝のべ担当÷実人数。自己ベスト＝過去アーカイブ（2024-01〜2026-07）の最高月。昇給は個人120万達成＋チーム(院)予算達成が条件。有山さん(管理部)は施術者集計の対象外です。</p>`;
   el.innerHTML = html;
 }
