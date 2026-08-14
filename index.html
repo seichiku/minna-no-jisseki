@@ -16,7 +16,7 @@
   <div class="login-card">
     <div class="login-logo">成</div>
     <h1>みんなの実績</h1>
-    <p>院予算・ストック・先行指標・各院の日次達成・個人ランキング</p>
+    <p>当月フロー・ペースチャート・ストック・各院の日次達成・個人ランキング</p>
     <div id="googleSignInBtn" class="google-btn-wrapper"></div>
     <div id="loginError" class="login-error" style="display:none;"></div>
     <div class="login-note">@seichiku.org アカウントでログインしてください</div>
@@ -32,7 +32,7 @@
       <div class="hero-logo">成</div>
       <div class="hero-text">
         <h1>みんなの実績</h1>
-        <p>院予算・ストック・先行指標・各院の日次達成・個人ランキング</p>
+        <p>「今日、予定のペースに乗れているか」を毎日見るページ</p>
       </div>
       <div class="user-info" id="userInfo"></div>
     </div>
@@ -44,6 +44,7 @@
     <div class="nav-tab" data-tab="clinic0">南砂院</div>
     <div class="nav-tab" data-tab="clinic1">塩浜院</div>
     <div class="nav-tab" data-tab="clinic2">東砂院</div>
+    <div class="nav-tab" data-tab="stock">ストック</div>
     <div class="nav-tab" data-tab="personalRanking">個人ランキング</div>
   </div>
 
@@ -53,32 +54,36 @@
     <p>データを読み込んでいます...</p>
   </div>
 
-  <!-- ====== Section 0: チーム実績（サブスク導線・チームファースト） ====== -->
+  <!-- ====== Section 0: チーム実績（当月フロー） ====== -->
   <div id="kpi" class="section active">
-    <div class="section-title"><span class="icon">🎯</span> チーム実績ダッシュボード</div>
-    <p class="section-desc">院（チーム）予算の達成がすべての基礎。院予算 → ストック → 先行指標 の順に表示しています。すべて分析シート（現行日計表・会員名簿・回数券台帳）からリアルタイム集計です。</p>
+    <div class="section-title"><span class="icon">🎯</span> チーム実績（当月フロー）</div>
+    <p class="section-desc">色分けは<b>ペース比</b>＝「今日までに積んでいるはずの予算」に対する進捗（🟢100%以上 / 🟡90-99% / 🔴89%以下）。月の途中でも「予定通り走れているか」がそのまま信号になります。すべて分析シートからのリアルタイム集計です。</p>
 
-    <!-- ① 院予算ゲージ -->
+    <!-- ① 全社ヒーロー（着地予測） -->
+    <div id="kpiHero"></div>
+
+    <!-- ② ペースチャート -->
     <div class="kpi-block">
-      <h3 class="kpi-h">① 院予算（チーム）<span class="kpi-tag live">LIVE</span></h3>
+      <h3 class="kpi-h">ペースチャート（全社・3店舗合計）<span class="kpi-tag live">LIVE</span></h3>
+      <p class="section-desc" style="margin:0 0 10px;">点線の対角線＝予算ペース。<b>線が対角線より上なら貯金あり</b>、下でも傾きが立っていれば巻き返し中です。縦軸100%＝全社予算。院別のチャートは各院ページにあります。</p>
+      <div id="kpiPaceChart" class="pace-chart-wrap"></div>
+    </div>
+
+    <!-- ③ 院別ペース -->
+    <div class="kpi-block">
+      <h3 class="kpi-h">院別ペース（今日までの予定額との差）<span class="kpi-tag live">LIVE</span></h3>
       <div class="kpi-cards" id="kpiBudget"></div>
     </div>
 
-
-    <!-- ② ストック（ライブ） -->
+    <!-- ④ 当月フロー指標 -->
     <div class="kpi-block">
-      <h3 class="kpi-h">② ストック ― サブスク <span class="kpi-tag live">LIVE</span></h3>
-      <div class="kpi-meter" id="kpiSubMeter"></div>
-      <div class="kpi-cards" id="kpiSubClinic"></div>
-    </div>
-    <div class="kpi-block">
-      <h3 class="kpi-h">② ストック ― オーダー回数券（目標6名/施術者）<span class="kpi-tag live">LIVE</span></h3>
-      <div class="kpi-gauges" id="kpiOrderGauges"></div>
+      <h3 class="kpi-h">当月フロー指標<span class="kpi-tag live">LIVE</span></h3>
+      <div id="kpiFlowTable"></div>
     </div>
 
-    <!-- ③ 先行指標 -->
+    <!-- ⑤ 先行指標 -->
     <div class="kpi-block">
-      <h3 class="kpi-h">③ 先行指標（助け合い・行動の質）</h3>
+      <h3 class="kpi-h">先行指標（助け合い・行動の質）</h3>
       <div class="kpi-cards" id="kpiLeading"></div>
     </div>
   </div>
@@ -86,24 +91,40 @@
   <!-- ====== 各院ページ（南砂/塩浜/東砂） ====== -->
   <div id="clinic0" class="section">
     <div class="section-title"><span class="icon">🏥</span> 南砂院</div>
-    <p class="section-desc">日次達成・鍼灸受診率・離反率・1ヶ月/2ヶ月離反数・離客フォローリスト（患者名）。分析シート・顧客マスタからライブ集計です。</p>
+    <p class="section-desc">ペースチャート・日次達成・個人マイルストーン・月次指標・離客フォローリスト。分析シート・顧客マスタからライブ集計です。</p>
     <div id="clinicBody0"></div>
   </div>
   <div id="clinic1" class="section">
     <div class="section-title"><span class="icon">🏥</span> 塩浜院</div>
-    <p class="section-desc">日次達成・鍼灸受診率・離反率・1ヶ月/2ヶ月離反数・離客フォローリスト（患者名）。分析シート・顧客マスタからライブ集計です。</p>
+    <p class="section-desc">ペースチャート・日次達成・個人マイルストーン・月次指標・離客フォローリスト。分析シート・顧客マスタからライブ集計です。</p>
     <div id="clinicBody1"></div>
   </div>
   <div id="clinic2" class="section">
     <div class="section-title"><span class="icon">🏥</span> 東砂院</div>
-    <p class="section-desc">日次達成・鍼灸受診率・離反率・1ヶ月/2ヶ月離反数・離客フォローリスト（患者名）。分析シート・顧客マスタからライブ集計です。</p>
+    <p class="section-desc">ペースチャート・日次達成・個人マイルストーン・月次指標・離客フォローリスト。分析シート・顧客マスタからライブ集計です。</p>
     <div id="clinicBody2"></div>
+  </div>
+
+  <!-- ====== Section: ストック ====== -->
+  <div id="stock" class="section">
+    <div class="section-title"><span class="icon">📦</span> ストック（サブスク・回数券）</div>
+    <p class="section-desc">積み上げ型の収益基盤。会員名簿・回数券残高台帳からリアルタイム集計です。</p>
+
+    <div class="kpi-block">
+      <h3 class="kpi-h">サブスク <span class="kpi-tag live">LIVE</span></h3>
+      <div class="kpi-meter" id="kpiSubMeter"></div>
+      <div class="kpi-cards" id="kpiSubClinic"></div>
+    </div>
+    <div class="kpi-block">
+      <h3 class="kpi-h">オーダー回数券（目標6名/施術者）<span class="kpi-tag live">LIVE</span></h3>
+      <div class="kpi-gauges" id="kpiOrderGauges"></div>
+    </div>
   </div>
 
   <!-- ====== Section 1: 個人ランキング ====== -->
   <div id="personalRanking" class="section">
     <div class="section-title"><span class="icon">🏆</span> 個人ランキング</div>
-    <p class="section-desc">現行日計表「分析」より院横断で集約した個人売上ランキング（施術者のみ）。個人売上150万（損益分岐120万＋余剰30万）の人材育成が目的。チームファースト＝院予算が土台、個人は成長指標です。</p>
+    <p class="section-desc">現行日計表「分析」より院横断で集約した個人売上ランキング（施術者のみ）。30万刻みのマイルストーンを一段ずつ上がり、損益分岐120万 → 150万（余剰30万）を目指します。チームファースト＝院予算が土台、個人は成長指標です。</p>
     <div id="personalRankingBody"></div>
   </div>
 
@@ -112,6 +133,7 @@
 </div>
 
 <script src="config.js"></script>
+<script src="history.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

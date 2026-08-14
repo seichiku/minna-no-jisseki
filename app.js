@@ -714,13 +714,331 @@ function kpiFindRow(grid, val) {
 function kpiNum(s) { return parseInt(String(s == null ? '' : s).replace(/[^0-9\-]/g, ''), 10) || 0; }
 function kpiDisp(s) { return (s == null || s === '') ? '—' : String(s); }
 
+// ============================================================
+// ペース計算・過去比較ヘルパー
+// 「月予算に対して何%か」ではなく「今日までの予定額に乗れているか」を
+// 毎日の信号にする。月の途中でも予定通りなら🟢になる。
+// ============================================================
+function yenFmt(n) { return '¥' + Number(Math.round(n)).toLocaleString('ja-JP'); }
+function paceBand(p) { return p >= 100 ? 'green' : (p >= 90 ? 'yellow' : 'red'); }
+function paceSig(p) { return p >= 100 ? '🟢' : (p >= 90 ? '🟡' : '🔴'); }
+
+// 院の当月ペース情報（実績・今日までの予定額・着地予測・必要日額）
+function clinicPace(name) {
+  const fBudget = flowMetric('予算');
+  const fActual = flowMetric('現在着地');
+  const prog = clinicDayProgress(name);
+  if (!fBudget || !fActual || !prog || !prog.total) return null;
+  const budget = kpiNum(fBudget[name]);
+  const actual = kpiNum(fActual[name]);
+  if (!budget) return null;
+  const perDay = budget / prog.total;
+  const paceTarget = Math.round(perDay * prog.elapsed);   // 今日までに積んでいるはずの額
+  const pacePct = paceTarget > 0 ? Math.round(actual / paceTarget * 100) : 0;
+  const forecast = prog.elapsed > 0 ? Math.round(actual / prog.elapsed * prog.total) : 0;
+  const fcPct = Math.round(forecast / budget * 100);
+  const remainDays = Math.max(0, prog.total - prog.elapsed);
+  const needPerDay = remainDays > 0 ? Math.max(0, Math.ceil((budget - actual) / remainDays)) : 0;
+  const gap = actual - paceTarget;                        // ＋なら貯金、−なら巻き返し分
+  return { budget, actual, perDay, paceTarget, pacePct, forecast, fcPct, remainDays, needPerDay, gap, elapsed: prog.elapsed, total: prog.total };
+}
+
+// 全社（3院合算）のペース情報
+function companyPace() {
+  const parts = CONFIG.KPI.CLINICS.map(clinicPace).filter(Boolean);
+  if (!parts.length) return null;
+  const sum = k => parts.reduce((s, p) => s + p[k], 0);
+  const budget = sum('budget'), actual = sum('actual'), paceTarget = sum('paceTarget');
+  const forecast = sum('forecast'), needPerDay = sum('needPerDay');
+  const remainDays = Math.max.apply(null, parts.map(p => p.remainDays));
+  return {
+    budget, actual, paceTarget, forecast, needPerDay, remainDays,
+    gap: actual - paceTarget,
+    pacePct: paceTarget > 0 ? Math.round(actual / paceTarget * 100) : 0,
+    fcPct: budget > 0 ? Math.round(forecast / budget * 100) : 0,
+  };
+}
+
+// 'YYYY-MM' キー（offsetMonths ヶ月ずらし）
+function ymKey(offsetMonths) {
+  const d = new Date();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + (offsetMonths || 0));
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+// 昨年同月の院実績（history.js の静的アーカイブから）
+function clinicLastYear(name) {
+  if (typeof HISTORY === 'undefined') return null;
+  const m = HISTORY.clinics[ymKey(-12)];
+  return (m && m[name] && m[name].total) || null;
+}
+// 昨年同月の個人実績（院またぎ合算）
+function personLastYear(name) {
+  if (typeof HISTORY === 'undefined') return null;
+  const m = HISTORY.persons[ymKey(-12)];
+  return (m && m[name]) || null;
+}
+// 個人の過去自己ベスト（アーカイブ25ヶ月中の最高月）
+function personBest(name) {
+  if (typeof HISTORY === 'undefined') return null;
+  let best = null;
+  Object.keys(HISTORY.persons).forEach(ym => {
+    const v = HISTORY.persons[ym][name];
+    if (v && (!best || v > best.v)) best = { v: v, ym: ym };
+  });
+  return best;
+}
+// 院の当月客単価（現在着地÷患者数）→「1日あと◯人」換算に使う
+function clinicUnitPrice(name) {
+  const fActual = flowMetric('現在着地');
+  const fPat = flowMetric('患者数(今月)');
+  if (!fActual || !fPat) return 0;
+  const a = kpiNum(fActual[name]), p = kpiNum(fPat[name]);
+  return p > 0 ? Math.round(a / p) : 0;
+}
+// 必要日額の「あと◯人」換算テキスト
+function needAsPatients(name, needPerDay) {
+  const unit = clinicUnitPrice(name);
+  if (!unit || !needPerDay) return '';
+  const n = Math.ceil(needPerDay / unit);
+  return `（客単価換算 約${n}人）`;
+}
+
+// 院の日次累積系列（日次達成タブの % × 日割予算 → 診療日ごとの累積）
+// → { points:[{x:経過%, y:予算進捗%}], last:{x,y} } / データ不足なら null
+function clinicCumSeries(name) {
+  if (!kpiDaily) return null;
+  const pace = clinicPace(name);
+  if (!pace || !pace.total) return null;
+  let hi = -1;
+  for (let i = 0; i < kpiDaily.length; i++) {
+    if (String((kpiDaily[i] || [])[0]).trim() === '院') { hi = i; break; }
+  }
+  if (hi < 0) return null;
+  for (let i = hi + 1; i < kpiDaily.length; i++) {
+    const r = kpiDaily[i] || [];
+    if (String(r[0] || '').trim() !== name) continue;
+    const points = [{ x: 0, y: 0 }];
+    let cum = 0, idx = 0;
+    for (let d = 1; d <= 31; d++) {
+      const v = r[3 + d];
+      const s = (v === undefined || v === null) ? '' : String(v).trim();
+      if (s === '') continue;
+      const p = parseFloat(s.replace(/[^0-9.\-]/g, '')) || 0;
+      cum += p / 100 * pace.perDay;
+      idx++;
+      points.push({ x: idx / pace.total * 100, y: cum / pace.budget * 100 });
+    }
+    if (points.length < 2) return null;
+    return { points, last: points[points.length - 1] };
+  }
+  return null;
+}
+
+// 全社（3院合算）の累積系列。院ごとに休診日が違うため、
+// X軸=「予算消化予定率」（その日までに積む予定だった予算÷全社予算）で合成する。
+// これなら予算ペース＝ちょうど対角線になる。
+function companyCumSeries() {
+  if (!kpiDaily) return null;
+  const clinics = CONFIG.KPI.CLINICS.map(name => {
+    const pace = clinicPace(name);
+    if (!pace || !pace.total) return null;
+    let hi = -1;
+    for (let i = 0; i < kpiDaily.length; i++) {
+      if (String((kpiDaily[i] || [])[0]).trim() === '院') { hi = i; break; }
+    }
+    if (hi < 0) return null;
+    for (let i = hi + 1; i < kpiDaily.length; i++) {
+      const r = kpiDaily[i] || [];
+      if (String(r[0] || '').trim() !== name) continue;
+      return { row: r, perDay: pace.perDay };
+    }
+    return null;
+  }).filter(Boolean);
+  if (!clinics.length) return null;
+  const totalBudget = CONFIG.KPI.CLINICS.reduce((s, n) => {
+    const p = clinicPace(n); return s + (p ? p.budget : 0);
+  }, 0);
+  if (!totalBudget) return null;
+  const points = [{ x: 0, y: 0 }];
+  let cumActual = 0, cumTarget = 0;
+  for (let d = 1; d <= 31; d++) {
+    let any = false;
+    clinics.forEach(c => {
+      const v = c.row[3 + d];
+      const s = (v === undefined || v === null) ? '' : String(v).trim();
+      if (s === '') return;
+      const p = parseFloat(s.replace(/[^0-9.\-]/g, '')) || 0;
+      cumActual += p / 100 * c.perDay;
+      cumTarget += c.perDay;
+      any = true;
+    });
+    if (any) points.push({ x: cumTarget / totalBudget * 100, y: cumActual / totalBudget * 100 });
+  }
+  if (points.length < 2) return null;
+  return { points, last: points[points.length - 1] };
+}
+
+// SVGペースチャート（依存ライブラリなし）
+// seriesList: [{name, color, points:[{x,y}], proj:{x,y}|null, endLabel}]
+// opts: {refLines:[{y,label}], height}
+function paceChartSvg(seriesList, opts) {
+  opts = opts || {};
+  const W = 640, H = opts.height || 330, L = 44, R = 14, T = 14, B = 28;
+  const iw = W - L - R, ih = H - T - B;
+  let maxY = 108;
+  seriesList.forEach(s => {
+    s.points.forEach(p => { if (p.y + 6 > maxY) maxY = p.y + 6; });
+    if (s.proj && s.proj.y + 6 > maxY) maxY = s.proj.y + 6;
+  });
+  (opts.refLines || []).forEach(rl => { if (rl.y + 6 > maxY) maxY = rl.y + 6; });
+  const px = x => L + x / 100 * iw;
+  const py = y => T + ih - (y / maxY) * ih;
+  let svg = `<svg viewBox="0 0 ${W} ${H}" class="pace-chart" role="img">`;
+  // グリッド（縦軸25%刻み）
+  for (let g = 25; g <= Math.floor(maxY / 25) * 25; g += 25) {
+    svg += `<line x1="${L}" y1="${py(g)}" x2="${W - R}" y2="${py(g)}" class="pc-grid"/>`;
+    svg += `<text x="${L - 6}" y="${py(g) + 4}" class="pc-ylabel">${g}%</text>`;
+  }
+  // 横軸ラベル
+  svg += `<text x="${px(0)}" y="${H - 8}" class="pc-xlabel">月初</text>`;
+  svg += `<text x="${px(50)}" y="${H - 8}" class="pc-xlabel" text-anchor="middle">月半ば</text>`;
+  svg += `<text x="${px(100)}" y="${H - 8}" class="pc-xlabel" text-anchor="end">月末</text>`;
+  // 予算ペースの対角線
+  svg += `<line x1="${px(0)}" y1="${py(0)}" x2="${px(100)}" y2="${py(100)}" class="pc-diagonal"/>`;
+  svg += `<text x="${px(72)}" y="${py(72) - 8}" class="pc-diagonal-label" text-anchor="middle">予算ペース</text>`;
+  // 参照線（昨年着地など）
+  (opts.refLines || []).forEach(rl => {
+    svg += `<line x1="${L}" y1="${py(rl.y)}" x2="${W - R}" y2="${py(rl.y)}" class="pc-refline"/>`;
+    svg += `<text x="${W - R}" y="${py(rl.y) - 5}" class="pc-reflabel" text-anchor="end">${rl.label}</text>`;
+  });
+  // 系列
+  const endLabels = [];
+  seriesList.forEach(s => {
+    const pts = s.points.map(p => `${px(p.x).toFixed(1)},${py(p.y).toFixed(1)}`).join(' ');
+    if (s.proj) {
+      const lp = s.points[s.points.length - 1];
+      svg += `<line x1="${px(lp.x)}" y1="${py(lp.y)}" x2="${px(s.proj.x)}" y2="${py(s.proj.y)}" class="pc-proj" style="stroke:${s.color}"/>`;
+      svg += `<circle cx="${px(s.proj.x)}" cy="${py(s.proj.y)}" r="3.5" fill="none" style="stroke:${s.color}" stroke-width="1.5" stroke-dasharray="2 2"/>`;
+    }
+    svg += `<polyline points="${pts}" class="pc-line" style="stroke:${s.color}"/>`;
+    const lp = s.points[s.points.length - 1];
+    svg += `<circle cx="${px(lp.x)}" cy="${py(lp.y)}" r="4.5" style="fill:${s.color}"/>`;
+    if (s.endLabel) endLabels.push({ x: lp.x, y: py(lp.y) - 8, label: s.endLabel, color: s.color });
+  });
+  // 終端ラベルの重なり回避（近いものを上下にずらす）
+  endLabels.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < endLabels.length; i++) {
+    if (endLabels[i].y - endLabels[i - 1].y < 16) endLabels[i].y = endLabels[i - 1].y + 16;
+  }
+  endLabels.forEach(el2 => {
+    const anchor = el2.x > 78 ? 'end' : 'start';
+    const dx = el2.x > 78 ? -10 : 10;
+    svg += `<text x="${px(el2.x) + dx}" y="${el2.y}" class="pc-endlabel" text-anchor="${anchor}" style="fill:${el2.color}">${el2.label}</text>`;
+  });
+  svg += '</svg>';
+  return svg;
+}
+
+const CLINIC_COLORS = { '南砂': '#2f6fed', '塩浜': '#00a58e', '東砂': '#e07a00' };
+
 function renderKpi() {
-  renderKpiBudget();
-  renderKpiStock();
-  renderKpiOrder();
-  renderKpiLeading();
-  renderClinicPages();   // 各院ページ（日次達成・鍼灸受診率・離反率・1/2ヶ月離反数）
-  // 個人ブロックはスタッフ画面では非表示（院＋先行指標まで）
+  renderKpiHero();       // 全社着地予測ヒーロー
+  renderKpiPaceChart();  // 3院ペースチャート
+  renderKpiBudget();     // 院別ペースカード
+  renderKpiFlowTable();  // 当月フロー指標表
+  renderKpiLeading();    // 先行指標
+  renderKpiStock();      // ストックタブ：サブスク
+  renderKpiOrder();      // ストックタブ：オーダー回数券
+  renderClinicPages();   // 各院ページ（ペースチャート・日次達成・個人マイルストーン等）
+}
+
+// ① 全社ヒーロー：着地予測を主役に（「行けるかも」の起点）
+function renderKpiHero() {
+  const el = document.getElementById('kpiHero');
+  if (!el) return;
+  if (kpiFlowError || !kpiFlow) {
+    el.innerHTML = `<div class="kpi-note">チーム実績を表示するには、分析シートを @seichiku.org に閲覧共有してください。</div>`;
+    return;
+  }
+  const cp = companyPace();
+  if (!cp) { el.innerHTML = `<div class="kpi-note">データが溜まると表示されます。</div>`; return; }
+  const band = paceBand(cp.pacePct);
+  const gapChip = cp.gap >= 0
+    ? `<span class="pace-chip plus">貯金 +${yenFmt(cp.gap)}</span>`
+    : `<span class="pace-chip minus">巻き返し ${yenFmt(cp.gap)}</span>`;
+  // 昨年同月（3院合算）
+  const lySum = CONFIG.KPI.CLINICS.reduce((s, c) => s + (clinicLastYear(c) || 0), 0);
+  const lyChip = lySum > 0
+    ? `<div class="team-hero-item"><span>昨年同月</span><b>${yenFmt(lySum)} → 昨対 ${Math.round(cp.forecast / lySum * 100)}%</b></div>`
+    : '';
+  const needLine = cp.remainDays === 0
+    ? '今月の診療日は終了しました'
+    : (cp.actual >= cp.budget
+      ? '全社予算 達成済み！このまま上積みを 💪'
+      : `予算100%まで 3院合計 <b>1日 ${yenFmt(cp.needPerDay)}</b> ／ 残り${cp.remainDays}診療日`);
+  el.innerHTML = `
+    <div class="team-hero band-${band}">
+      <div class="team-hero-main">
+        <div class="team-hero-label">このペースだと全社着地</div>
+        <div class="team-hero-value">${yenFmt(cp.forecast)}</div>
+        <div class="team-hero-rate">予算比 ${cp.fcPct}%　／　ペース比 ${cp.pacePct}% ${paceSig(cp.pacePct)} ${gapChip}</div>
+      </div>
+      <div class="team-hero-sub">
+        <div class="team-hero-item"><span>当月実績</span><b>${yenFmt(cp.actual)}</b></div>
+        <div class="team-hero-item"><span>全社予算</span><b>${yenFmt(cp.budget)}</b></div>
+        ${lyChip}
+      </div>
+      <div class="team-hero-need">${needLine}</div>
+    </div>`;
+}
+
+// ② 全社ペースチャート（3店舗合計を1本で。院別は各院ページに表示）
+function renderKpiPaceChart() {
+  const el = document.getElementById('kpiPaceChart');
+  if (!el) return;
+  if (kpiFlowError || !kpiDaily) { el.innerHTML = `<div class="kpi-note">日次データが溜まると表示されます。</div>`; return; }
+  const s = companyCumSeries();
+  const cp = companyPace();
+  if (!s || !cp) { el.innerHTML = `<div class="kpi-note">日次データが溜まると表示されます。</div>`; return; }
+  const COMPANY_COLOR = '#1f3864';
+  const refLines = [];
+  const lySum = CONFIG.KPI.CLINICS.reduce((sum, c) => sum + (clinicLastYear(c) || 0), 0);
+  if (lySum > 0 && cp.budget) refLines.push({ y: lySum / cp.budget * 100, label: `昨年着地 ${yenFmt(lySum)}` });
+  const svg = paceChartSvg([{
+    name: '全社', color: COMPANY_COLOR,
+    points: s.points,
+    proj: { x: 100, y: cp.fcPct },
+    endLabel: `いま ${Math.round(s.last.y)}%`,
+  }], { refLines });
+  const legend =
+    `<span class="pc-legend-item"><i style="background:${COMPANY_COLOR}"></i>全社（3店舗合計）</span>` +
+    `<span class="pc-legend-item"><i class="pc-legend-proj"></i>点線＝現ペースの着地予測</span>` +
+    `<span class="pc-legend-item">院別チャートは各院ページへ</span>`;
+  el.innerHTML = svg + `<div class="pc-legend">${legend}</div>`;
+}
+
+// ④ 当月フロー指標表（フロー（3院）タブから主要行を抜粋）
+function renderKpiFlowTable() {
+  const el = document.getElementById('kpiFlowTable');
+  if (!el) return;
+  if (kpiFlowError || !kpiFlow) { el.innerHTML = `<div class="kpi-note">分析シートの共有が必要です。</div>`; return; }
+  const ROWS = ['患者数(今月)', '新患数', '再診数', '既存数', '事前予約(翌日計)', '一人生産性', '鍼灸受診率', '鍼灸受診率(施術ベース)', 'ベッド稼働率'];
+  const found = [];
+  ROWS.forEach(label => {
+    for (const r of kpiFlow) {
+      if (r && String(r[0] || '').trim() === label) { found.push(r); return; }
+    }
+  });
+  if (!found.length) { el.innerHTML = `<div class="kpi-note">フロー指標を読み込めませんでした。</div>`; return; }
+  let html = `<div class="flow-table-wrap"><table class="flow-table">
+    <thead><tr><th>指標</th><th>南砂</th><th>塩浜</th><th>東砂</th><th>全社</th></tr></thead><tbody>`;
+  found.forEach(r => {
+    html += `<tr><td class="ft-label">${escHtml(String(r[0]))}</td>
+      <td>${kpiDisp(r[1])}</td><td>${kpiDisp(r[2])}</td><td>${kpiDisp(r[3])}</td><td class="ft-total">${kpiDisp(r[4])}</td></tr>`;
+  });
+  html += '</tbody></table></div>';
+  el.innerHTML = html;
 }
 
 // フロー（3院）タブから指標を院別に取得 → {南砂,塩浜,東砂}
@@ -867,44 +1185,92 @@ function clinicDayProgress(clinicName) {
   return null;
 }
 
-// 月末着地予測：現ペース（実績÷経過診療日数）×総診療日数
-function forecastHtml(name, fBudget, fActual) {
-  const prog = clinicDayProgress(name);
-  const actual = fActual ? kpiNum(fActual[name]) : 0;
-  const budget = fBudget ? kpiNum(fBudget[name]) : 0;
-  if (!prog || !prog.elapsed || !prog.total || !actual || !budget) {
+// 月末着地予測：現ペース（実績÷経過診療日数）×総診療日数 ＋ 昨対比
+function forecastHtml(name) {
+  const p = clinicPace(name);
+  if (!p || !p.elapsed || !p.actual) {
     return `
       <div class="kpi-block">
         <h3 class="kpi-h">月末着地予測</h3>
         <div class="kpi-note">データが溜まると表示されます（実績と診療日数から現ペースで予測します）。</div>
       </div>`;
   }
-  const forecast = Math.round(actual / prog.elapsed * prog.total);
-  const pct = Math.round(forecast / budget * 100);
-  const band = pct >= 100 ? 'green' : (pct >= 80 ? 'yellow' : 'red');
-  const sig = pct >= 100 ? '🟢' : (pct >= 80 ? '🟡' : '🔴');
-  const remainDays = Math.max(0, prog.total - prog.elapsed);
-  const needPerDay = remainDays > 0 ? Math.max(0, Math.ceil((budget - actual) / remainDays)) : 0;
-  const yen = n => '¥' + Number(n).toLocaleString('ja-JP');
-  const needLine = remainDays === 0
+  const band = paceBand(p.pacePct);
+  const needLine = p.remainDays === 0
     ? '今月の診療日は終了しました'
-    : (actual >= budget
+    : (p.actual >= p.budget
       ? '予算達成済み！このまま上積みを 💪'
-      : `予算まであと ${yen(budget - actual)} ／ 残り${remainDays}診療日 → <b>1日あたり ${yen(needPerDay)}</b> で達成`);
+      : `予算まであと ${yenFmt(p.budget - p.actual)} ／ 残り${p.remainDays}診療日 → <b>1日あたり ${yenFmt(p.needPerDay)}</b> ${needAsPatients(name, p.needPerDay)}で達成`);
+  const ly = clinicLastYear(name);
+  const lyLine = ly
+    ? `<div class="kpi-card-sub">昨年同月 ${yenFmt(ly)} → 着地予測は昨対 <b>${Math.round(p.forecast / ly * 100)}%</b>${p.forecast >= ly ? ' 🎉 昨年超えペース' : ''}</div>`
+    : '';
   return `
     <div class="kpi-block">
       <h3 class="kpi-h">月末着地予測<span class="kpi-tag live">LIVE</span></h3>
       <div class="kpi-card budget-${band}">
         <div class="kpi-card-label">このペースだと月末着地</div>
-        <div class="kpi-card-big">${yen(forecast)} <span class="kpi-card-unit">予算比 ${pct}% ${sig}</span></div>
-        <div class="kpi-bar"><div class="kpi-bar-fill ${band}" style="width:${Math.min(100, Math.max(0, pct))}%"></div></div>
+        <div class="kpi-card-big">${yenFmt(p.forecast)} <span class="kpi-card-unit">予算比 ${p.fcPct}%・ペース比 ${p.pacePct}% ${paceSig(p.pacePct)}</span></div>
+        <div class="kpi-bar"><div class="kpi-bar-fill ${band}" style="width:${Math.min(100, Math.max(0, p.fcPct))}%"></div></div>
         <div class="kpi-card-sub">${needLine}</div>
-        <div class="kpi-card-sub" style="opacity:.7">経過 ${prog.elapsed}/${prog.total} 診療日・毎日13/21時更新</div>
+        ${lyLine}
+        <div class="kpi-card-sub" style="opacity:.7">経過 ${p.elapsed}/${p.total} 診療日・毎日13/21時更新</div>
       </div>
     </div>`;
 }
 
-// 各院ページの「個人の実績」ブロック（個人ランキングタブを所属院で絞り込み）
+// 院別ペースチャート（1院分＋昨年着地の参照線）
+function clinicChartHtml(name) {
+  const s = clinicCumSeries(name);
+  const p = clinicPace(name);
+  if (!s || !p) return '';
+  const refLines = [];
+  const ly = clinicLastYear(name);
+  if (ly && p.budget) refLines.push({ y: ly / p.budget * 100, label: `昨年着地 ${yenFmt(ly)}` });
+  const svg = paceChartSvg([{
+    name, color: CLINIC_COLORS[name],
+    points: s.points,
+    proj: { x: 100, y: p.fcPct },
+    endLabel: `いま ${Math.round(s.last.y)}%`,
+  }], { refLines });
+  return `
+    <div class="kpi-block">
+      <h3 class="kpi-h">ペースチャート<span class="kpi-tag live">LIVE</span></h3>
+      <p class="section-desc" style="margin:0 0 10px;">縦軸100%＝月予算 ${yenFmt(p.budget)}。点線の対角線＝予算ペース、色の点線＝現ペースの着地予測。</p>
+      <div class="pace-chart-wrap">${svg}</div>
+    </div>`;
+}
+
+// ── 個人マイルストーン（30万刻み→120万損益分岐→150万ストレッチ） ──
+// 個人の当月ペース情報（院の経過診療日を暫定利用）
+function personMilestone(sales, prog) {
+  const MS = CONFIG.KPI.MILESTONES;
+  const maxV = MS[MS.length - 1].v;
+  const next = MS.find(m => sales < m.v) || null;
+  let reached = null;
+  for (const m of MS) { if (sales >= m.v) reached = m; }
+  let fc = 0;
+  if (prog && prog.elapsed > 0 && prog.total > 0) fc = Math.round(sales / prog.elapsed * prog.total);
+  // 色分け＝現ペースの着地で「次のマイルストーン」に届くか
+  let band = 'red';
+  if (!next) band = 'green';
+  else if (fc >= next.v) band = 'green';
+  else if (fc >= next.v * 0.9) band = 'yellow';
+  return { MS, maxV, next, reached, fc, band };
+}
+
+// マイルストーンバー（目盛り付きプログレスバー）
+function milestoneBarHtml(sales, ms) {
+  const w = Math.min(100, sales / ms.maxV * 100);
+  const ticks = ms.MS.map(m => {
+    const left = m.v / ms.maxV * 100;
+    const on = sales >= m.v;
+    return `<span class="ms-tick ${on ? 'on' : ''}" style="left:${left}%" title="${m.l}${m.note ? '（' + m.note + '）' : ''}"><i></i><em>${m.l}</em></span>`;
+  }).join('');
+  return `<div class="ms-bar"><div class="ms-bar-fill band-${ms.band}" style="width:${w}%"></div>${ticks}</div>`;
+}
+
+// 各院ページの「個人のマイルストーン」ブロック（個人ランキングタブを所属院で絞り込み）
 function clinicPersonalHtml(name) {
   if (kpiPersonalError || !kpiPersonalGrid) return '';
   let hi = -1;
@@ -913,47 +1279,56 @@ function clinicPersonalHtml(name) {
   }
   if (hi < 0) return '';
   const prog = clinicDayProgress(name);
-  const BUDGET = 1200000; // 損益分岐120万（個人ランキングと同じ基準）
-  const yen = n => '¥' + Number(n).toLocaleString('ja-JP');
   const cards = [];
   for (let i = hi + 1; i < kpiPersonalGrid.length; i++) {
     const r = kpiPersonalGrid[i] || [];
     if (!String(r[1] || '').trim()) break;
+    const staff = String(r[1]).trim();
     const clinic = String(r[2] || '').trim();
     if (!(clinic.includes(name) || name.includes(clinic))) continue;
     const sales = kpiNum(r[3]);
-    const pct = Math.round(sales / BUDGET * 100);
-    const band = pct >= 100 ? 'green' : (pct >= 80 ? 'yellow' : 'red');
-    const sig = pct >= 100 ? '🟢' : (pct >= 80 ? '🟡' : '🔴');
+    const ms = personMilestone(sales, prog);
+    const sig = ms.band === 'green' ? '🟢' : (ms.band === 'yellow' ? '🟡' : '🔴');
+    const reachedLine = ms.reached
+      ? `<span class="ms-badge on">✅ ${ms.reached.l}${ms.reached.note ? '（' + ms.reached.note + '）' : ''} 到達</span>`
+      : `<span class="ms-badge">最初のマイルストーン ${ms.MS[0].l} へ</span>`;
+    let nextLine = '';
+    if (!ms.next) {
+      nextLine = `<div class="kpi-need">全マイルストーン制覇 🏆 このまま上積みを</div>`;
+    } else {
+      const remainDays = prog ? Math.max(0, prog.total - prog.elapsed) : 0;
+      const gap = ms.next.v - sales;
+      const perDay = remainDays > 0 ? Math.ceil(gap / remainDays) : 0;
+      nextLine = `<div class="kpi-need">次は <b>${ms.next.l}</b>${ms.next.note ? '（' + ms.next.note + '）' : ''}：あと ${yenFmt(gap)}${remainDays > 0 ? ` → <b>1日 ${yenFmt(perDay)}</b>` : ''}</div>`;
+    }
     let fcLine = '';
-    if (prog && prog.elapsed > 0 && prog.total > 0 && sales > 0) {
-      const fc = Math.round(sales / prog.elapsed * prog.total);
-      const fcPct = Math.round(fc / BUDGET * 100);
-      const fcSig = fcPct >= 100 ? '🟢' : (fcPct >= 80 ? '🟡' : '🔴');
-      fcLine = `<div class="kpi-card-sub">着地予測 <b>${yen(fc)}</b>（${fcPct}% ${fcSig}）</div>`;
+    if (ms.fc > 0) {
+      const fcMs = personMilestone(ms.fc, null);
+      const landing = fcMs.reached ? `＝ <b>${fcMs.reached.l}</b> 到達見込み` : '';
+      fcLine = `<div class="kpi-card-sub">着地予測 <b>${yenFmt(ms.fc)}</b> ${landing}</div>`;
     }
-    let needLine = '';
-    if (prog && prog.total > 0) {
-      const remainDays = Math.max(0, prog.total - prog.elapsed);
-      if (sales >= BUDGET) needLine = `<div class="kpi-need">120万達成 💪</div>`;
-      else if (remainDays === 0) needLine = `<div class="kpi-need">今月の診療日は終了</div>`;
-      else needLine = `<div class="kpi-need">残り<b>${remainDays}</b>診療日 → <b>1日 ${yen(Math.ceil((BUDGET - sales) / remainDays))}</b>で120万</div>`;
-    }
+    // 過去の自分との比較（昨年同月・自己ベスト）
+    const ly = personLastYear(staff);
+    const best = personBest(staff);
+    let histLine = '';
+    if (ly && ms.fc > 0) histLine += `<div class="kpi-card-sub">昨年同月の自分 ${yenFmt(ly)} → 昨対 <b>${Math.round(ms.fc / ly * 100)}%</b>${ms.fc >= ly ? ' 🎉' : ''}</div>`;
+    if (best) histLine += `<div class="kpi-card-sub">自己ベスト ${yenFmt(best.v)}（${best.ym}）${ms.fc >= best.v ? ' → <b>更新ペース 🔥</b>' : ''}</div>`;
     cards.push(`
-      <div class="kpi-card budget-${band}">
-        <div class="kpi-card-label">${escHtml(String(r[1]))}</div>
-        <div class="kpi-card-big">${kpiDisp(r[3])} <span class="kpi-card-unit">${pct}% ${sig}</span></div>
-        <div class="kpi-bar"><div class="kpi-bar-fill ${band}" style="width:${Math.min(100, Math.max(0, pct))}%"></div></div>
+      <div class="kpi-card budget-${ms.band} ms-card">
+        <div class="kpi-card-label">${escHtml(staff)} ${reachedLine}</div>
+        <div class="kpi-card-big">${yenFmt(sales)} <span class="kpi-card-unit">${sig}</span></div>
+        ${milestoneBarHtml(sales, ms)}
         ${fcLine}
-        ${needLine}
+        ${histLine}
+        ${nextLine}
       </div>`);
   }
   if (cards.length === 0) return '';
   return `
     <div class="kpi-block">
-      <h3 class="kpi-h">個人の当月実績（この院）<span class="kpi-tag live">LIVE</span></h3>
-      <p class="section-desc" style="margin:0 0 10px;">色分け＝損益分岐120万の達成度（🟢100% / 🟡80-99% / 🔴79%以下）。着地予測＝現ペース×診療日数。</p>
-      <div class="kpi-cards">${cards.join('')}</div>
+      <h3 class="kpi-h">個人のマイルストーン（この院）<span class="kpi-tag live">LIVE</span></h3>
+      <p class="section-desc" style="margin:0 0 10px;">30万刻みで一段ずつ。色分け＝現ペースの着地で「次のマイルストーン」に届くか（🟢届く / 🟡あと少し / 🔴要ペースアップ）。過去の自分（昨年同月・自己ベスト）とも比べます。</p>
+      <div class="kpi-cards ms-cards">${cards.join('')}</div>
     </div>`;
 }
 
@@ -963,10 +1338,7 @@ function renderClinicPages() {
   const churn = flowMetric('離反率');
   const c1 = flowMetric('1ヶ月離反数');
   const c2 = flowMetric('2ヶ月離反数');
-  const fBudget = flowMetric('予算');       // 月次予算
-  const fActual = flowMetric('現在着地');    // 当月実績
   const fDay = flowMetric('日割予算');       // 日次予算
-  const fRate = flowMetric('現予達率');      // 達成度
   CONFIG.KPI.CLINICS.forEach((name, idx) => {
     const el = document.getElementById('clinicBody' + idx);
     if (!el) return;
@@ -986,22 +1358,28 @@ function renderClinicPages() {
         <div class="kpi-card-big">${val} <span class="kpi-card-unit">${sig(band)}</span></div>
         <div class="kpi-card-sub">${sub}</div>
       </div>`;
-    // 院ヒーロー：当月実績（達成度で色分け）＋月次予算＋日次予算
-    const rV = fRate ? (parseFloat(String(fRate[name]).replace(/[^0-9.\-]/g, '')) || 0) : 0;
-    const rB = rV >= 100 ? 'green' : (rV >= 80 ? 'yellow' : 'red');
+    // 院ヒーロー：当月実績＋ペース比（今日までの予定額に乗れているか）で色分け
+    const p = clinicPace(name);
+    const rB = p ? paceBand(p.pacePct) : 'red';
+    const gapChip = p
+      ? (p.gap >= 0
+        ? `<span class="pace-chip plus">貯金 +${yenFmt(p.gap)}</span>`
+        : `<span class="pace-chip minus">巻き返し ${yenFmt(p.gap)}</span>`)
+      : '';
     const hero = `
       <div class="clinic-hero band-${rB}">
         <div class="clinic-hero-main">
           <div class="clinic-hero-label">当月実績</div>
-          <div class="clinic-hero-value">${fActual ? kpiDisp(fActual[name]) : '—'}</div>
-          <div class="clinic-hero-rate">達成度 ${fRate ? kpiDisp(fRate[name]) : '—'} <span>${sig(rB)}</span></div>
+          <div class="clinic-hero-value">${p ? yenFmt(p.actual) : '—'}</div>
+          <div class="clinic-hero-rate">ペース比 ${p ? p.pacePct + '%' : '—'} <span>${sig(rB)}</span> ${gapChip}</div>
         </div>
         <div class="clinic-hero-sub">
-          <div class="clinic-hero-item"><span>月次予算</span><b>${fBudget ? kpiDisp(fBudget[name]) : '—'}</b></div>
+          <div class="clinic-hero-item"><span>月次予算</span><b>${p ? yenFmt(p.budget) : '—'}</b></div>
           <div class="clinic-hero-item"><span>日次予算</span><b>${fDay ? kpiDisp(fDay[name]) : '—'}</b></div>
+          <div class="clinic-hero-item"><span>今日までの予定</span><b>${p ? yenFmt(p.paceTarget) : '—'}</b></div>
         </div>
       </div>`;
-    el.innerHTML = hero + forecastHtml(name, fBudget, fActual) + `
+    el.innerHTML = hero + forecastHtml(name) + clinicChartHtml(name) + `
       <div class="kpi-block">
         <h3 class="kpi-h">日次達成（毎日の予算達成）<span class="kpi-tag live">LIVE</span></h3>
         <p class="section-desc" style="margin:0 0 10px;">当日院売上 ÷ 日割予算。🟢100%以上 / 🟡80-99% / 🔴79%以下。空欄＝休診/未到来。</p>
@@ -1046,59 +1424,43 @@ function kpiFindBudget(grid) {
   return null;
 }
 
-// ① 院予算（分析シートからライブ）＋「あと何診療日・1日いくらで100%」
+// ③ 院別ペースカード：「今日までの予定額」に対する進捗で色分け＋着地予測＋昨対
 function renderKpiBudget() {
   const el = document.getElementById('kpiBudget');
   if (!el) return;
-  if (kpiFlowError || !kpiAnalysis) {
-    el.innerHTML = `<div class="kpi-note">院予算を表示するには、分析シートを @seichiku.org に閲覧共有してください。</div>`;
+  if (kpiFlowError || !kpiFlow) {
+    el.innerHTML = `<div class="kpi-note">院別ペースを表示するには、分析シートを @seichiku.org に閲覧共有してください。</div>`;
     return;
   }
-  const budget = kpiFindBudget(kpiAnalysis);
-  if (!budget || !budget.length) {
-    el.innerHTML = `<div class="kpi-note">分析シートの院予算データを読み込めませんでした。</div>`;
-    return;
-  }
-  const yen = n => '¥' + Number(n).toLocaleString('ja-JP');
-  // 院別に「残り診療日・1日必要額」を算出（日次達成タブの診療日数を使用）
-  const need = {};
-  budget.forEach(b => {
-    if (b.name === '全社') return;
-    const prog = clinicDayProgress(b.name);
-    const bud = kpiNum(b.budget), act = kpiNum(b.actual);
-    if (prog && prog.total && bud) {
-      const remainDays = Math.max(0, prog.total - prog.elapsed);
-      const needPerDay = (remainDays > 0 && act < bud) ? Math.ceil((bud - act) / remainDays) : 0;
-      need[b.name] = { remainDays, needPerDay, actual: act, budget: bud };
-    }
-  });
-  const needLineHtml = (name) => {
-    if (name === '全社') {
-      const parts = Object.values(need);
-      if (!parts.length) return '';
-      if (parts.every(p => p.actual >= p.budget)) return `<div class="kpi-need">予算達成済み 💪</div>`;
-      const sumNeed = parts.reduce((s, p) => s + p.needPerDay, 0);
-      return `<div class="kpi-need">3院合計 <b>1日 ${yen(sumNeed)}</b> で予算100%<span class="kpi-need-note">（内訳は各院ページ）</span></div>`;
-    }
-    const n = need[name];
-    if (!n) return '';
-    if (n.actual >= n.budget) return `<div class="kpi-need">予算達成済み 💪</div>`;
-    if (n.remainDays === 0) return `<div class="kpi-need">今月の診療日は終了</div>`;
-    return `<div class="kpi-need">残り<b>${n.remainDays}</b>診療日 → <b>1日 ${yen(n.needPerDay)}</b>で100%</div>`;
-  };
-  el.innerHTML = budget.map(b => {
-    const raw = parseFloat(String(b.rate).replace(/[^0-9.\-]/g, '')) || 0;
-    const band = raw >= 100 ? 'green' : (raw >= 80 ? 'yellow' : 'red');
-    const w = Math.min(100, Math.max(0, Math.round(raw)));
-    return `
+  const cards = [];
+  CONFIG.KPI.CLINICS.forEach(name => {
+    const p = clinicPace(name);
+    if (!p) return;
+    const band = paceBand(p.pacePct);
+    const w = Math.min(100, Math.max(0, p.pacePct));
+    const gapLine = p.gap >= 0
+      ? `<span class="pace-chip plus">貯金 +${yenFmt(p.gap)}</span>`
+      : `<span class="pace-chip minus">巻き返し ${yenFmt(p.gap)}</span>`;
+    const ly = clinicLastYear(name);
+    const lyLine = ly
+      ? `<div class="kpi-card-sub">昨年同月 ${yenFmt(ly)} → 着地予測は昨対 <b>${Math.round(p.forecast / ly * 100)}%</b></div>`
+      : '';
+    let needLine;
+    if (p.actual >= p.budget) needLine = `<div class="kpi-need">予算達成済み 💪</div>`;
+    else if (p.remainDays === 0) needLine = `<div class="kpi-need">今月の診療日は終了</div>`;
+    else needLine = `<div class="kpi-need">残り<b>${p.remainDays}</b>診療日 → <b>1日 ${yenFmt(p.needPerDay)}</b>で100%<span class="kpi-need-note">${needAsPatients(name, p.needPerDay)}</span></div>`;
+    cards.push(`
     <div class="kpi-card budget-${band}">
-      <div class="kpi-card-label">${b.name}</div>
-      <div class="kpi-card-big">${kpiDisp(b.rate)} <span class="kpi-card-unit">${b.sig || ''}</span></div>
+      <div class="kpi-card-label">${name}</div>
+      <div class="kpi-card-big">ペース ${p.pacePct}% <span class="kpi-card-unit">${paceSig(p.pacePct)}</span></div>
       <div class="kpi-bar"><div class="kpi-bar-fill ${band}" style="width:${w}%"></div></div>
-      <div class="kpi-card-sub">実績 ${kpiDisp(b.actual)} / 予算 ${kpiDisp(b.budget)}</div>
-      ${needLineHtml(b.name)}
-    </div>`;
-  }).join('');
+      <div class="kpi-card-sub">実績 ${yenFmt(p.actual)} ／ 今日までの予定 ${yenFmt(p.paceTarget)} ${gapLine}</div>
+      <div class="kpi-card-sub">着地予測 <b>${yenFmt(p.forecast)}</b>（予算 ${yenFmt(p.budget)} の ${p.fcPct}%）</div>
+      ${lyLine}
+      ${needLine}
+    </div>`);
+  });
+  el.innerHTML = cards.length ? cards.join('') : `<div class="kpi-note">データが溜まると表示されます。</div>`;
 }
 
 // ② ストック：サブスク（ライブ）
@@ -1248,33 +1610,51 @@ function renderPersonalRanking() {
     rows.push(r);
   }
   // 列: 0順位 1施術者 2所属院 3個人売上 4-120万達成 5余剰 6目的休暇 7稼働率 8人時
-  const BUDGET = 1200000;  // 個人予算＝損益分岐120万
-  let html = `<table class="rank-table">
+  // 各行の経過診療日は所属院（最初に一致した院）のものを使用
+  const progOf = clinicStr => {
+    for (const c of CONFIG.KPI.CLINICS) {
+      if (String(clinicStr || '').includes(c)) return clinicDayProgress(c);
+    }
+    return null;
+  };
+  let html = `<div class="rank-table-wrap"><table class="rank-table">
     <thead><tr>
       <th>順位</th><th>施術者</th><th>所属院</th><th>個人売上(月)</th>
-      <th>予算達成度<br>(120万)</th><th>目的休暇<br>(日)</th><th>稼働率</th><th>人時(円/h)</th>
+      <th>マイルストーン</th><th>着地予測</th><th>自己ベスト</th><th>稼働率</th><th>人時(円/h)</th>
     </tr></thead><tbody>`;
   rows.forEach(r => {
+    const staff = String(r[1] || '').trim();
     const sales = kpiNum(r[3]);
-    const pct = BUDGET ? Math.round(sales / BUDGET * 100) : 0;
-    const band = pct >= 100 ? 'green' : (pct >= 80 ? 'yellow' : 'red');
-    const sig = pct >= 100 ? '🟢' : (pct >= 80 ? '🟡' : '🔴');
-    const w = Math.min(100, Math.max(0, pct));
-    html += `<tr class="rank-${band}">
+    const ms = personMilestone(sales, progOf(r[2]));
+    const sig = ms.band === 'green' ? '🟢' : (ms.band === 'yellow' ? '🟡' : '🔴');
+    const reachedLabel = ms.reached ? `${ms.reached.l} 到達` : `${ms.MS[0].l} へ`;
+    const nextLabel = ms.next ? `次:${ms.next.l} あと${yenFmt(ms.next.v - sales)}` : '制覇 🏆';
+    let fcCell = '—';
+    if (ms.fc > 0) {
+      const fcMs = personMilestone(ms.fc, null);
+      fcCell = `${yenFmt(ms.fc)}${fcMs.reached ? '<br><span class="rank-fc-ms">' + fcMs.reached.l + ' 見込み</span>' : ''}`;
+    }
+    const best = personBest(staff);
+    const bestCell = best
+      ? `${yenFmt(best.v)}<br><span class="rank-fc-ms">${best.ym}${ms.fc >= best.v ? '・更新ペース🔥' : ''}</span>`
+      : '—';
+    html += `<tr class="rank-${ms.band}">
       <td class="rank-pos">${kpiDisp(r[0])}</td>
       <td class="rank-name">${kpiDisp(r[1])}</td>
       <td class="rank-clinic">${kpiDisp(r[2])}</td>
       <td class="rank-sales">${kpiDisp(r[3])}</td>
       <td class="rank-rate">
-        <span class="rate-badge rate-${band}">${pct}% ${sig}</span>
-        <span class="rate-bar"><span class="rate-bar-fill ${band}" style="width:${w}%"></span></span>
+        <span class="rate-badge rate-${ms.band}">${reachedLabel} ${sig}</span>
+        ${milestoneBarHtml(sales, ms)}
+        <span class="rank-next">${nextLabel}</span>
       </td>
-      <td>${kpiDisp(r[6])}</td>
+      <td>${fcCell}</td>
+      <td>${bestCell}</td>
       <td>${kpiDisp(r[7])}</td>
       <td>${kpiDisp(r[8])}</td>
     </tr>`;
   });
-  html += `</tbody></table>
-    <p class="section-desc" style="margin-top:12px;">※色分け＝個人予算（損益分岐120万）の達成度（🟢100%以上 / 🟡80-99% / 🔴79%以下）。昇給は個人120万達成＋チーム(院)予算達成が条件。目的休暇日数＝(余剰×20%)÷日当。有山さん(管理部)は施術者集計の対象外です。</p>`;
+  html += `</tbody></table></div>
+    <p class="section-desc" style="margin-top:12px;">※マイルストーン＝30万刻み→120万（損益分岐）→150万（余剰30万）。色分け＝現ペースの着地で次のマイルストーンに届くか（🟢届く / 🟡あと少し / 🔴要ペースアップ）。自己ベスト＝過去アーカイブ（2024-01〜2026-01）の最高月。昇給は個人120万達成＋チーム(院)予算達成が条件。有山さん(管理部)は施術者集計の対象外です。</p>`;
   el.innerHTML = html;
 }

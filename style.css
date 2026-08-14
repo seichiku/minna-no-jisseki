@@ -437,3 +437,86 @@ body {
 @media (max-width: 600px) {
   .rihan-lists { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   2026-08 改修：当月フロー中心（ペース比・着地予測・マイルストーン）
+   ============================================================ */
+
+/* 全社ヒーロー（着地予測） */
+.team-hero { border-radius: 16px; padding: 24px 28px; margin-bottom: 22px; box-shadow: var(--shadow); border: 1px solid var(--border); }
+.team-hero.band-green  { background: #e9f9ef; border-left: 8px solid #16a34a; }
+.team-hero.band-yellow { background: #fff7e0; border-left: 8px solid #f59e0b; }
+.team-hero.band-red    { background: #fdecec; border-left: 8px solid #dc2626; }
+.team-hero-label { font-size: 14px; font-weight: 600; color: var(--text-light); }
+.team-hero-value { font-size: 46px; font-weight: 800; line-height: 1.15; }
+.team-hero.band-green  .team-hero-value { color: #15803d; }
+.team-hero.band-yellow .team-hero-value { color: #b45309; }
+.team-hero.band-red    .team-hero-value { color: #b91c1c; }
+.team-hero-rate { font-size: 16px; font-weight: 700; color: var(--text); margin-top: 4px; }
+.team-hero-sub { display: flex; gap: 28px; flex-wrap: wrap; margin-top: 14px; }
+.team-hero-item { display: flex; flex-direction: column; }
+.team-hero-item span { font-size: 12px; color: var(--text-light); font-weight: 600; }
+.team-hero-item b { font-size: 16px; color: var(--text); }
+.team-hero-need { margin-top: 12px; font-size: 14px; font-weight: 600; color: var(--text); }
+.team-hero-need b { color: #15803d; font-size: 17px; }
+
+/* ペース差チップ（貯金／巻き返し） */
+.pace-chip { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; margin-left: 6px; vertical-align: middle; }
+.pace-chip.plus  { background: #dcfce7; color: #15803d; }
+.pace-chip.minus { background: #fee2e2; color: #b91c1c; }
+
+/* ペースチャート */
+.pace-chart-wrap { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 12px 6px; overflow-x: auto; }
+.pace-chart { width: 100%; height: auto; display: block; min-width: 480px; }
+.pc-grid { stroke: var(--border); stroke-width: 1; }
+.pc-ylabel { font-size: 11px; fill: var(--text-light); text-anchor: end; }
+.pc-xlabel { font-size: 11px; fill: var(--text-light); }
+.pc-diagonal { stroke: #94a3b8; stroke-width: 1.5; stroke-dasharray: 6 5; }
+.pc-diagonal-label { font-size: 11px; fill: #94a3b8; font-weight: 600; }
+.pc-refline { stroke: #b45309; stroke-width: 1.2; stroke-dasharray: 3 4; }
+.pc-reflabel { font-size: 11px; fill: #b45309; font-weight: 600; }
+.pc-line { fill: none; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+.pc-proj { stroke-width: 2; stroke-dasharray: 4 5; opacity: 0.75; }
+.pc-endlabel { font-size: 13px; font-weight: 700; }
+.pc-legend { display: flex; gap: 16px; flex-wrap: wrap; padding: 8px 4px 4px; font-size: 12px; color: var(--text-light); }
+.pc-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.pc-legend-item i { display: inline-block; width: 14px; height: 4px; border-radius: 2px; }
+.pc-legend-proj { background: repeating-linear-gradient(90deg, #94a3b8 0 4px, transparent 4px 8px) !important; height: 2px !important; }
+
+/* 当月フロー指標表 */
+.flow-table-wrap { overflow-x: auto; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); }
+.flow-table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 520px; }
+.flow-table th { background: var(--primary-dark); color: #fff; padding: 10px 14px; text-align: right; font-weight: 600; white-space: nowrap; }
+.flow-table th:first-child { text-align: left; }
+.flow-table td { padding: 9px 14px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+.flow-table td.ft-label { text-align: left; font-weight: 600; color: var(--text); }
+.flow-table td.ft-total { font-weight: 700; background: #f0f7fa; }
+.flow-table tr:last-child td { border-bottom: none; }
+
+/* マイルストーンバー */
+.ms-bar { position: relative; height: 12px; background: #e2e8f0; border-radius: 6px; margin: 14px 0 26px; }
+.ms-bar-fill { height: 100%; border-radius: 6px; transition: width 0.6s; }
+.ms-bar-fill.band-green  { background: linear-gradient(90deg, #22c55e, #16a34a); }
+.ms-bar-fill.band-yellow { background: linear-gradient(90deg, #fbbf24, #f59e0b); }
+.ms-bar-fill.band-red    { background: linear-gradient(90deg, #f87171, #dc2626); }
+.ms-tick { position: absolute; top: -3px; transform: translateX(-50%); }
+.ms-tick i { display: block; width: 3px; height: 18px; background: #94a3b8; border-radius: 2px; margin: 0 auto; }
+.ms-tick.on i { background: #15803d; }
+.ms-tick em { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); font-size: 10px; font-style: normal; color: var(--text-light); white-space: nowrap; }
+.ms-tick.on em { color: #15803d; font-weight: 700; }
+.ms-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; background: #e2e8f0; color: var(--text-light); font-size: 11px; font-weight: 700; margin-left: 6px; }
+.ms-badge.on { background: #dcfce7; color: #15803d; }
+.ms-card .kpi-card-label { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.ms-cards .kpi-card { min-width: 300px; }
+
+/* 個人ランキング追加分 */
+.rank-table-wrap { overflow-x: auto; }
+.rank-table .ms-bar { margin: 8px 0 22px; height: 8px; min-width: 180px; }
+.rank-table .ms-tick i { height: 13px; }
+.rank-table .ms-tick em { top: 14px; font-size: 9px; }
+.rank-fc-ms { font-size: 11px; color: var(--text-light); font-weight: 600; }
+.rank-next { display: block; font-size: 11px; color: var(--text-light); }
+
+/* 情報量の多いカード（院別ペース・個人マイルストーン）は広めに */
+#kpiBudget { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+.ms-cards { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
