@@ -117,6 +117,7 @@ function showLoginError(msg) {
 async function loadAllData(credential) {
   const loading = document.getElementById('loadingIndicator');
   loading.style.display = 'flex';
+  hideGlobalError();
 
   try {
     const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
@@ -149,9 +150,28 @@ async function loadAllData(credential) {
     renderPersonalRanking();
   } catch (err) {
     console.error('Data loading error:', err);
+    // 2026-08-19: コンソールだけでなく画面にも失敗を出す（無言の真っ白画面を防ぐ）
+    showGlobalError('データの読み込みに失敗しました：' + ((err && err.message) || err));
   } finally {
     loading.style.display = 'none';
   }
+}
+
+// ── 読み込み失敗の画面表示（再読み込みボタン付き） ──
+function showGlobalError(msg) {
+  const el = document.getElementById('globalError');
+  if (!el) return;
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div style="border:1px solid #e07070;background:#fdf1f1;color:#8a2f2f;padding:14px 16px;border-radius:10px;font-size:14px;line-height:1.7;">
+      ⚠️ ${escHtml(msg)}<br>
+      通信状況を確認して再試行してください。直らない場合は竹中さんへ「みんなの実績が読み込みエラー」と一報を。
+      <button onclick="location.reload()" style="display:block;margin-top:10px;padding:8px 18px;border-radius:8px;border:1px solid #8a2f2f;background:#fff;color:#8a2f2f;font-weight:600;cursor:pointer;">再読み込み</button>
+    </div>`;
+}
+function hideGlobalError() {
+  const el = document.getElementById('globalError');
+  if (el) { el.style.display = 'none'; el.innerHTML = ''; }
 }
 
 // 中継APIから取得済みの束（__bundle）からシートを返す（旧: Sheets API 直接読み）。

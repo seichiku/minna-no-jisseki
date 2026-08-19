@@ -21,6 +21,9 @@ var CLIENT_ID = '248673786507-mdqci7it6nokcerj001k226k6fungjeu.apps.googleuserco
 // ログインを許可するドメイン
 var ALLOWED_DOMAIN = 'seichiku.org';
 
+// シート束のキャッシュ保持秒数（分析シートは毎日13/21時更新なので5分で十分新鮮）
+var CACHE_TTL_SEC = 300;
+
 // 読み取り対象スプレッドシート（config.js と対応）
 var DAILY_ID    = '1VtEYc26jifylOmEewOQSalzPNwT0MDXx9hupQiTLDo4'; // 日報データベース
 var MEMBER_ID   = '1GF75uOiAM363___Nf13rkQYTs4vPsEXyr1zt4E1uTUk'; // 会員名簿(サブスク)
@@ -63,18 +66,40 @@ function doPost(e) {
     }
 
     // 各シートを読み取り（キー = "ID|シート名"）。読めない場合は null（クライアント側で共有案内）。
+    // 2026-08-19: CacheService で5分キャッシュ（全員が同じデータを見るため）。
+    // 初回ログインは従来通り〜10秒だが、キャッシュ命中時は1〜2秒で返る。
+    // 100KB/キー超のシートは put が失敗するので黙ってスキップ＝そのシートだけ毎回読む。
     var sheets = {};
     var cache = {};
+    var cacheSvc = CacheService.getScriptCache();
     for (var i = 0; i < SHEET_SPECS.length; i++) {
       var id = SHEET_SPECS[i][0];
       var name = SHEET_SPECS[i][1];
       var key = id + '|' + name;
+      var ck = 'b1|' + key; // キャッシュキー（形式変更時は b2| に上げて無効化）
+      var hit = cacheSvc.get(ck);
+      if (hit != null) {
+        sheets[key] = JSON.parse(hit);
+        continue;
+      }
       try {
         var ss = cache[id] || (cache[id] = SpreadsheetApp.openById(id));
         var sh = ss.getSheetByName(name);
-        sheets[key] = sh ? sh.getDataRange().getDisplayValues() : [];
+        // 「フロー（3院）」は2026-08-17からタブ名に月が付く（例: フロー（3院）2026年8月）。
+        // キーは従来どおり "ID|フロー（3院）" のまま、プレフィックス一致で実タブを解決する。
+        if (!sh && name === 'フロー（3院）') {
+          var pool = ss.getSheets();
+          for (var j = 0; j < pool.length; j++) {
+            if (pool[j].getName().indexOf(name) === 0) { sh = pool[j]; break; }
+          }
+        }
+        var grid = sh ? sh.getDataRange().getDisplayValues() : [];
+        // 顧客マスタは離客リストに使う3列（B=氏名/E=院/K=最終来院日）だけ返す（列位置は維持）
+        if (id === MASTER_ID) grid = slimMaster_(grid);
+        sheets[key] = grid;
+        try { cacheSvc.put(ck, JSON.stringify(grid), CACHE_TTL_SEC); } catch (ignore) {}
       } catch (err) {
-        sheets[key] = null; // アクセス不可（共有未設定）
+        sheets[key] = null; // アクセス不可（共有未設定）。エラーはキャッシュしない
       }
     }
 
@@ -86,6 +111,20 @@ function doPost(e) {
   } catch (err) {
     return json_({ ok: false, error: 'server_error', message: String(err) });
   }
+}
+
+// 顧客マスタを離客リスト用の3列（B=1/E=4/K=10）だけの疎な行に間引く（クライアントの列番号は不変）
+function slimMaster_(grid) {
+  var out = [];
+  for (var i = 0; i < grid.length; i++) {
+    var r = grid[i] || [];
+    var row = [];
+    row[1] = r[1] || '';   // 氏名
+    row[4] = r[4] || '';   // 院
+    row[10] = r[10] || ''; // 最終来院日
+    out.push(row);
+  }
+  return out;
 }
 
 // 動作確認用（ブラウザで /exec を開いたときの応答）
