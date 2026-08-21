@@ -1351,6 +1351,7 @@ function clinicPersonalHtml(name) {
     const r = kpiPersonalGrid[i] || [];
     if (!String(r[1] || '').trim()) break;
     const staff = String(r[1]).trim();
+    if ((CONFIG.KPI.HIDE_STAFF || []).includes(staff)) continue;   // 2026-08-21: 竹中さんは表示対象外
     const clinic = String(r[2] || '').trim();
     if (!(clinic.includes(name) || name.includes(clinic))) continue;
     const sales = kpiNum(r[3]);
@@ -1405,7 +1406,7 @@ function renderClinicPages() {
   const churn = flowMetric('離反率');
   const c1 = flowMetric('1ヶ月離反数');
   const c2 = flowMetric('2ヶ月離反数');
-  const fDay = flowMetric('日割予算');       // 日次予算
+  // 2026-08-21: 新フロータブに「日割予算」行は無いため、月予算÷診療日数（clinicPace.perDay）で表示する
   CONFIG.KPI.CLINICS.forEach((name, idx) => {
     const el = document.getElementById('clinicBody' + idx);
     if (!el) return;
@@ -1444,7 +1445,7 @@ function renderClinicPages() {
         </div>
         <div class="clinic-hero-sub">
           <div class="clinic-hero-item"><span>月次予算</span><b>${p ? yenFmt(p.budget) : '—'}</b></div>
-          <div class="clinic-hero-item"><span>日次予算</span><b>${fDay ? kpiDisp(fDay[name]) : '—'}</b></div>
+          <div class="clinic-hero-item"><span>日次予算</span><b>${p ? yenFmt(p.perDay) : '—'}</b></div>
           <div class="clinic-hero-item"><span>今日までの予定</span><b>${p ? yenFmt(p.paceTarget) : '—'}</b></div>
         </div>
       </div>`;
@@ -1693,6 +1694,7 @@ function renderPersonalRanking() {
     </tr></thead><tbody>`;
   rows.forEach(r => {
     const staff = String(r[1] || '').trim();
+    if ((CONFIG.KPI.HIDE_STAFF || []).includes(staff)) return;   // 2026-08-21: 竹中さんは表示対象外
     const sales = kpiNum(r[3]);
     const ms = personMilestone(sales, progOf(r[2]));
     const sig = ms.band === 'green' ? '🟢' : (ms.band === 'yellow' ? '🟡' : '🔴');
