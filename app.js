@@ -808,10 +808,11 @@ function personBest(name) {
   });
   return best;
 }
-// 院の当月客単価（現在着地÷患者数）→「1日あと◯人」換算に使う
+// 院の当月客単価（現在着地÷のべ来院件数）→「1日あと◯人」換算に使う
+// 2026-08-20: フロータブの行名変更（患者数(今月)→総患者=のべ）。旧名はスナップショット互換のフォールバック。
 function clinicUnitPrice(name) {
   const fActual = flowMetric('現在着地');
-  const fPat = flowMetric('患者数(今月)');
+  const fPat = flowMetric('総患者') || flowMetric('患者数(今月)');
   if (!fActual || !fPat) return 0;
   const a = kpiNum(fActual[name]), p = kpiNum(fPat[name]);
   return p > 0 ? Math.round(a / p) : 0;
@@ -1044,7 +1045,8 @@ function renderKpiFlowTable() {
   if (!el) return;
   if (kpiFlowError || !kpiFlow) { el.innerHTML = `<div class="kpi-note">分析シートの共有が必要です。</div>`; return; }
   // 2026-08-14: 鍼灸受診率はチーム実績では非表示（各院ページで施術ベースを表示）→代わりにLTV
-  const ROWS = ['患者数(今月)', '新患数', '再診数', '既存数', '事前予約(翌日計)', '一人生産性', 'LTV', 'ベッド稼働率'];
+  // 2026-08-20: 全患者数=実人数／総患者=のべ（旧・患者数(今月)）。既存数は実人数ベースに変更
+  const ROWS = ['全患者数', '総患者', '新患数', '再診数', '既存数', '事前予約(翌日計)', '一人生産性', 'LTV', 'ベッド稼働率'];
   const found = [];
   ROWS.forEach(label => {
     for (const r of kpiFlow) {
