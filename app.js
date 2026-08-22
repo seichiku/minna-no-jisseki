@@ -971,6 +971,7 @@ function renderKpi() {
   renderKpiLeading();    // 先行指標
   renderKpiStock();      // ストックタブ：サブスク
   renderKpiOrder();      // ストックタブ：オーダー回数券
+  renderKpiOpt();        // ストックタブ：オプションチケット（施術者別保有 2026-08-21）
   renderClinicPages();   // 各院ページ（ペースチャート・日次達成・個人マイルストーン等）
 }
 
@@ -1605,6 +1606,28 @@ function renderKpiOrder() {
 }
 
 // ③ 先行指標（次予約クロージングはライブ、他は器）
+// ストック: 施術者別オプションチケット保有（台帳サマリーのオプチケ保有列＝E列をミラー。目標なしの現況表示 2026-08-21）
+function renderKpiOpt() {
+  const el = document.getElementById('kpiOptCards');
+  if (!el) return;
+  if (kpiAccessError || !kpiKaisu) {
+    el.innerHTML = `<div class="kpi-note">回数券残高台帳サマリーの閲覧共有が必要です。</div>`;
+    return;
+  }
+  let any = false;
+  const cards = CONFIG.KPI.STAFF.map(name => {
+    const row = kpiFindRow(kpiKaisu, name);
+    const have = row ? kpiNum(row[4]) : 0;
+    if (row && row[4] !== undefined && String(row[4]).trim() !== '') any = true;
+    return `
+      <div class="kpi-gauge">
+        <div class="kpi-gauge-name">${name}</div>
+        <div class="kpi-gauge-num">${have}<span class="kpi-card-unit">件</span></div>
+      </div>`;
+  });
+  el.innerHTML = any ? cards.join('') : `<div class="kpi-note">台帳サマリーのオプチケ列が見つかりません。</div>`;
+}
+
 function renderKpiLeading() {
   const el = document.getElementById('kpiLeading');
   if (!el) return;
