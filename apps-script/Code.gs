@@ -30,6 +30,7 @@ var MEMBER_ID   = '1GF75uOiAM363___Nf13rkQYTs4vPsEXyr1zt4E1uTUk'; // 会員名�
 var KAISU_ID    = '1TZjeowvbF6fqPA2BmE-ryxk360v3E-ZkSgBbknMCMc4'; // 回数券残高台帳
 var ANALYSIS_ID = '1mIGrmd9S6QrOZz8t5Ntqm9Tqs37JWW_aVVb54AZjh94'; // 分析シート
 var MASTER_ID   = '17vs50q2yaxK1NmuHaUgczXS8WMJQH38SSI65yhw3YaQ'; // 顧客マスタ（離客フォローリスト用）
+var WEEKLY_ID   = '1NiYQORX9I7imdlt-ycY6_Ry0CqYl0Y0W6gwS0mFqfvM'; // 週次効果測定ダッシュボード（口コミ回収 2026-08-21）
 
 // 返すシート一覧 [スプレッドシートID, シート名]。キーは "ID|シート名"。
 var SHEET_SPECS = [
@@ -44,6 +45,7 @@ var SHEET_SPECS = [
   [ANALYSIS_ID, '戦術（先行指標）'],     // 転換提案/LINE発信/ロープレ
   [ANALYSIS_ID, '個人ランキング'],      // 個人ランキング
   [MASTER_ID,   '顧客マスタ'],           // 離客フォローリスト（氏名×院×最終来院日）
+  [WEEKLY_ID,   'GBP(3店舗)'],          // 口コミ回収の現状（クチコミ累計/週増分/評価・毎週水曜更新）
 ];
 
 function doPost(e) {

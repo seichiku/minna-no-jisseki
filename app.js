@@ -678,6 +678,7 @@ let kpiAccessError = false;   // ストック(会員/回数券)共有エラー
 let kpiFlowError = false;     // 分析シート共有エラー
 let kpiMaster = null;         // 顧客マスタ「顧客マスタ」grid（離客フォローリスト用）
 let kpiMasterError = false;   // 顧客マスタ共有エラー
+let kpiKuchikomi = null;      // 週次効果測定「GBP(3店舗)」grid（口コミ回収の現状 2026-08-22）
 
 async function loadKpiData() {
   // ストック（会員名簿・回数券台帳）
@@ -723,6 +724,13 @@ async function loadKpiData() {
     console.warn('顧客マスタ読込失敗（共有未設定の可能性）:', err);
     kpiMaster = null;
     kpiMasterError = true;
+  }
+  // 口コミ回収（週次効果測定ダッシュボードGBPタブ：取得できなくても他は出す 2026-08-22）
+  try {
+    kpiKuchikomi = await fetchSheet(CONFIG.KUCHIKOMI.ID, CONFIG.KUCHIKOMI.SHEET, 'A:I');
+  } catch (err) {
+    console.warn('口コミ(週次GBP)読込失敗:', err);
+    kpiKuchikomi = null;
   }
 }
 
@@ -1661,7 +1669,55 @@ function renderKpiLeading() {
   let html = tacticCard('転換 提案数（全社・今月）', '転換 提案数');
   html += tacticCard('LINE 発信数（全社・今月）', 'LINE 発信数');
   html += tacticCard('ロープレ 実施数（全社・今月）', 'ロープレ 実施数');
+  // 口コミ回収（毎月3件目標/店舗・週次効果測定のGBPタブから 2026-08-22）
+  html += kuchikomiCards();
   el.innerHTML = html;
+}
+
+// ── 口コミ回収の現状（当月件数＝当月最新のクチコミ累計 − 前月最後のクチコミ累計） ──
+function kuchikomiStats() {
+  if (!kpiKuchikomi) return null;
+  // ヘッダー行（「クチコミ累計」を含む行）を探す
+  let hi = -1, ci = -1, si = -1, ei = -1;
+  for (let i = 0; i < kpiKuchikomi.length; i++) {
+    const r = kpiKuchikomi[i] || [];
+    const j = r.findIndex(x => String(x).trim() === 'クチコミ累計');
+    if (j >= 0) { hi = i; ci = j; si = r.findIndex(x => String(x).trim() === '店舗'); ei = r.findIndex(x => String(x).trim() === '評価'); break; }
+  }
+  if (hi < 0 || si < 0) return null;
+  const now = new Date();
+  const ym = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  const out = {};   // 院名（「院」なし）→ {cur, prev, rating}
+  for (let i = hi + 1; i < kpiKuchikomi.length; i++) {
+    const r = kpiKuchikomi[i] || [];
+    const wk = String(r[0] || '').trim();
+    const shop = String(r[si] || '').replace('院', '').trim();
+    if (!wk || !shop) continue;
+    const cum = parseInt(String(r[ci] == null ? '' : r[ci]).replace(/[^0-9]/g, ''), 10);
+    if (isNaN(cum)) continue;   // 累計未記録の週（7月中旬以前）はスキップ
+    const o = out[shop] || (out[shop] = { cur: null, prev: null, rating: null });
+    if (wk.slice(0, 7) === ym) { o.cur = cum; if (ei >= 0) o.rating = String(r[ei] || '').trim(); }
+    else if (wk.slice(0, 7) < ym) { o.prev = cum; }   // 行は週昇順→最後に残るのが前月最終
+  }
+  return out;
+}
+function kuchikomiCards() {
+  const goal = (CONFIG.KUCHIKOMI && CONFIG.KUCHIKOMI.GOAL) || 3;
+  const st = kuchikomiStats();
+  return CONFIG.KPI.CLINICS.map(name => {
+    const o = st ? st[name] : null;
+    const n = (o && o.cur != null && o.prev != null) ? Math.max(0, o.cur - o.prev) : null;
+    const band = n == null ? '' : (n >= goal ? 'green' : (n >= 1 ? 'yellow' : 'red'));
+    const sig = n == null ? '' : (band === 'green' ? '🟢' : (band === 'yellow' ? '🟡' : '🔴'));
+    const sub = o && o.cur != null
+      ? `累計 ${o.cur}件${o.rating ? '・評価 ' + o.rating : ''}<span class="kpi-tag live">LIVE</span>`
+      : '<span class="kpi-tag wait">週次集計待ち（毎週水曜更新）</span>';
+    return `<div class="kpi-card ${band ? 'budget-' + band : ''}">
+        <div class="kpi-card-label">口コミ回収（${name}・今月）</div>
+        <div class="kpi-card-big">${n == null ? '—' : n + '件'}<span class="kpi-card-unit"> / 目標 ${goal}件</span> ${sig}</div>
+        <div class="kpi-card-sub">${sub}</div>
+      </div>`;
+  }).join('');
 }
 
 // ============================================================
