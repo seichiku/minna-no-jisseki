@@ -50,7 +50,13 @@ var SHEET_SPECS = [
 
 function doPost(e) {
   try {
-    var idToken = (e && e.postData && e.postData.contents ? e.postData.contents : '').trim();
+    var body = (e && e.postData && e.postData.contents ? e.postData.contents : '').trim();
+    // 閲覧ログ（LPのsendBeacon・JSON形式）＝社内アクセス解析用の軽量イベント（2026-08-26 竹中要望）
+    if (body.charAt(0) === '{') {
+      try { var ev = JSON.parse(body); logAccess_(String(ev.email||''), String(ev.name||''), 'tab', String(ev.tab||'')); } catch (ig) {}
+      return json_({ ok: true });
+    }
+    var idToken = body;
     var claims = verifyIdToken_(idToken);
     if (!claims) return json_({ ok: false, error: 'invalid_token' });
 
@@ -66,6 +72,9 @@ function doPost(e) {
     if (ALLOWED_DOMAIN && domain !== ALLOWED_DOMAIN) {
       return json_({ ok: false, error: 'domain_forbidden', domain: domain });
     }
+
+    // ログイン記録（アクセス解析 2026-08-26）
+    try { logAccess_(email, String(claims.name||''), 'login', ''); } catch (ig2) {}
 
     // 各シートを読み取り（キー = "ID|シート名"）。読めない場合は null（クライアント側で共有案内）。
     // 2026-08-19: CacheService で5分キャッシュ（全員が同じデータを見るため）。
@@ -127,6 +136,44 @@ function slimMaster_(grid) {
     out.push(row);
   }
   return out;
+}
+
+// ============================================================
+// アクセス解析（2026-08-26 竹中要望: 誰が・いつ・どのタブを見ているか）
+// 「アクセスログ」（隠しタブ・生ログ）と「アクセス集計」（QUERY数式の見えるタブ）を
+// 分析シートに自動作成。ログイン=doPost成功時、タブ閲覧=LPのsendBeacon。
+// ============================================================
+var ACCESS_LOG_TAB = 'アクセスログ';
+var ACCESS_SUM_TAB = 'アクセス集計';
+function logAccess_(email, name, type, tab) {
+  var ss = SpreadsheetApp.openById(ANALYSIS_ID);
+  var sh = ss.getSheetByName(ACCESS_LOG_TAB);
+  if (!sh) {
+    sh = ss.insertSheet(ACCESS_LOG_TAB);
+    sh.getRange(1, 1, 1, 5).setValues([['日時', 'email', '氏名', '種別', 'タブ']]).setFontWeight('bold');
+    sh.hideSheet();
+    ensureAccessSummary_(ss);
+  }
+  sh.appendRow([new Date(), email, name, type, tab]);
+}
+function ensureAccessSummary_(ss) {
+  if (ss.getSheetByName(ACCESS_SUM_TAB)) return;
+  var sh = ss.insertSheet(ACCESS_SUM_TAB);
+  sh.setHiddenGridlines(true);
+  sh.getRange(1,1,1,8).merge().setValue('みんなの実績 アクセス集計（誰が・いつ・どこを見ているか）')
+    .setBackground('#1f3864').setFontColor('#ffffff').setFontWeight('bold').setFontSize(14).setVerticalAlignment('middle');
+  sh.setRowHeight(1,30);
+  sh.getRange(2,1,1,8).merge().setValue('▸ データ元: 隠しタブ「アクセスログ」（ログイン=中継API・タブ閲覧=LPが自動送信）。計測開始 2026-08-26。リアルタイム反映。')
+    .setFontColor('#7f7f7f').setFontSize(9).setWrap(true);
+  sh.getRange(4,1).setValue('■ 人別（ログイン回数・最終ログイン）').setFontWeight('bold');
+  sh.getRange(5,1).setFormula('=IFERROR(QUERY(アクセスログ!A:E,"select C, B, count(A), max(A) where D=\'login\' group by C, B order by count(A) desc label C \'氏名\', B \'email\', count(A) \'ログイン回数\', max(A) \'最終ログイン\'",1),"まだログがありません")');
+  sh.getRange(4,7).setValue('■ タブ別 閲覧数').setFontWeight('bold');
+  sh.getRange(5,7).setFormula('=IFERROR(QUERY(アクセスログ!A:E,"select E, count(A) where D=\'tab\' group by E order by count(A) desc label E \'タブ\', count(A) \'閲覧数\'",1),"まだログがありません")');
+  sh.getRange(20,1).setValue('■ 日別ログイン数（直近14日）').setFontWeight('bold');
+  sh.getRange(21,1).setFormula('=IFERROR(QUERY(アクセスログ!A:E,"select toDate(A), count(B) where D=\'login\' group by toDate(A) order by toDate(A) desc limit 14 label toDate(A) \'日\', count(B) \'ログイン数\'",1),"まだログがありません")');
+  sh.getRange(20,4).setValue('■ 人別×タブ別 閲覧数').setFontWeight('bold');
+  sh.getRange(21,4).setFormula('=IFERROR(QUERY(アクセスログ!A:E,"select C, E, count(A) where D=\'tab\' group by C, E order by C, count(A) desc label C \'氏名\', E \'タブ\', count(A) \'閲覧数\'",1),"まだログがありません")');
+  sh.setColumnWidth(1,140); sh.setColumnWidth(2,220); sh.setColumnWidth(4,140);
 }
 
 // 動作確認用（ブラウザで /exec を開いたときの応答）

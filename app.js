@@ -40,6 +40,7 @@ window.onload = function () {
       document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
       document.getElementById(tab.dataset.tab).classList.add('active');
       tab.classList.add('active');
+      logView(tab.textContent.trim());   // アクセス解析（2026-08-26）
     });
   });
 
@@ -85,6 +86,8 @@ async function handleCredential(response) {
       return;
     }
   }
+
+  window.__me = { email: (claims && claims.email) || '', name: (claims && claims.name) || '' };   // アクセス解析用（2026-08-26）
 
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('mainApp').style.display = 'block';
@@ -148,6 +151,7 @@ async function loadAllData(credential) {
     await Promise.all([loadCaseData(), loadKpiData(), loadPersonalRanking()]);
     renderKpi();
     renderPersonalRanking();
+    logView('チーム実績');   // 初期表示タブもアクセスログに記録（2026-08-26）
   } catch (err) {
     console.error('Data loading error:', err);
     // 2026-08-19: コンソールだけでなく画面にも失敗を出す（無言の真っ白画面を防ぐ）
@@ -155,6 +159,15 @@ async function loadAllData(credential) {
   } finally {
     loading.style.display = 'none';
   }
+}
+
+// ── アクセス解析: タブ閲覧を中継APIへ送信（fire-and-forget・失敗しても無害 2026-08-26）──
+function logView(tabName) {
+  try {
+    if (!window.__me || !window.__me.email) return;
+    navigator.sendBeacon(CONFIG.APPS_SCRIPT_URL,
+      JSON.stringify({ v: 1, tab: tabName, email: __me.email, name: __me.name }));
+  } catch (e) { /* 解析はベストエフォート */ }
 }
 
 // ── 読み込み失敗の画面表示（再読み込みボタン付き） ──
