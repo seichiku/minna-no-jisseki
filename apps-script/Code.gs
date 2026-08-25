@@ -148,13 +148,14 @@ var ACCESS_SUM_TAB = 'アクセス集計';
 function logAccess_(email, name, type, tab) {
   var ss = SpreadsheetApp.openById(ANALYSIS_ID);
   var sh = ss.getSheetByName(ACCESS_LOG_TAB);
-  if (!sh) {
-    sh = ss.insertSheet(ACCESS_LOG_TAB);
+  if (!sh) sh = ss.insertSheet(ACCESS_LOG_TAB);
+  // ヘッダー自己修復（初回作成が途中失敗しても次の呼び出しで直る 2026-08-25）
+  if (String(sh.getRange(1, 1).getValue()) !== '日時') {
+    if (sh.getLastRow() > 0) sh.insertRowBefore(1);
     sh.getRange(1, 1, 1, 5).setValues([['日時', 'email', '氏名', '種別', 'タブ']]).setFontWeight('bold');
-    sh.hideSheet();
-    ensureAccessSummary_(ss);
   }
   sh.appendRow([new Date(), email, name, type, tab]);
+  try { ensureAccessSummary_(ss); } catch (e2) {}   // 集計タブも毎回チェック（存在すれば即return）
 }
 function ensureAccessSummary_(ss) {
   if (ss.getSheetByName(ACCESS_SUM_TAB)) return;
