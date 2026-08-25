@@ -1628,7 +1628,7 @@ function renderKpiOrder() {
 }
 
 // ③ 先行指標（次予約クロージングはライブ、他は器）
-// ストック: サブスク施術者別（台帳サマリーF列＝当月サブ消化の担当会員数。構築GASが日計表から集計 2026-08-26）
+// ストック: サブスク施術者別 新規成約数（台帳サマリーF列＝日計表「サブ販売」の7月〜累計件数。構築GASが集計 2026-08-26）
 function renderKpiSubStaff() {
   const el = document.getElementById('kpiSubStaff');
   if (!el) return;
@@ -1641,7 +1641,7 @@ function renderKpiSubStaff() {
     return `
       <div class="kpi-gauge">
         <div class="kpi-gauge-name">${name}</div>
-        <div class="kpi-gauge-num">${n}<span class="kpi-card-unit">名</span></div>
+        <div class="kpi-gauge-num">${n}<span class="kpi-card-unit">件</span></div>
       </div>`;
   });
   el.innerHTML = any ? cards.join('') : `<div class="kpi-note">当月の集計待ちです（毎日13/21時更新）。</div>`;
