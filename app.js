@@ -993,6 +993,7 @@ function renderKpi() {
   renderKpiStock();      // ストックタブ：サブスク
   renderKpiSubStaff();   // ストックタブ：サブスク施術者別（当月サブ消化の担当会員数 2026-08-26）
   renderKpiOrder();      // ストックタブ：オーダー回数券
+  renderKpiChurn();      // ストックタブ：離脱（サブスク解約・回数券未更新 2026-08-26）
   renderKpiOpt();        // ストックタブ：オプションチケット（施術者別保有 2026-08-21）
   renderClinicPages();   // 各院ページ（ペースチャート・日次達成・個人マイルストーン等）
 }
@@ -1069,7 +1070,11 @@ function renderKpiFlowTable() {
   if (kpiFlowError || !kpiFlow) { el.innerHTML = `<div class="kpi-note">分析シートの共有が必要です。</div>`; return; }
   // 2026-08-14: 鍼灸受診率はチーム実績では非表示（各院ページで施術ベースを表示）→代わりにLTV
   // 2026-08-20: 全患者数=実人数／総患者=のべ（旧・患者数(今月)）。既存数は実人数ベースに変更
-  const ROWS = ['全患者数', '総患者', '新患数', '再診数', '既存数', '事前予約(翌日計)', '一人生産性', 'LTV', 'ベッド稼働率'];
+  // 2026-08-26: フロータブの表示範囲（全患者数〜LTV）を全て表示（竹中要望）
+  const ROWS = ['全患者数', '総患者', '新患数', '再診数', '既存数', '事前予約(翌日計)',
+    '一人生産性', '客単価', '通院頻度(全患者)', '初再診 通院頻度',
+    '鍼灸受診率', '鍼灸受診率(施術ベース)', 'ベッド稼働率', '人員稼働数',
+    '新患リピ率', '再診リピ率', '既存リピ率', 'LTV'];
   const found = [];
   ROWS.forEach(label => {
     for (const r of kpiFlow) {
@@ -1645,6 +1650,38 @@ function renderKpiSubStaff() {
       </div>`;
   });
   el.innerHTML = any ? cards.join('') : `<div class="kpi-note">当月の集計待ちです（毎日13/21時更新）。</div>`;
+}
+
+// ストック: 離脱（サブスク解約・回数券未更新。台帳サマリー下部のラベル行をミラー 2026-08-26）
+function renderKpiChurn() {
+  const el = document.getElementById('kpiChurnCards');
+  if (!el) return;
+  if (kpiAccessError || !kpiKaisu) { el.innerHTML = ''; return; }
+  const sub = kpiFindRow(kpiKaisu, 'サブスク解約(当月)');
+  const od = kpiFindRow(kpiKaisu, 'オーダー未更新');
+  const op = kpiFindRow(kpiKaisu, 'オプチケ未更新');
+  if (!sub && !od && !op) { el.innerHTML = `<div class="kpi-note">集計待ちです（毎日13/21時更新）。</div>`; return; }
+  const n = v => kpiNum(v);
+  let html = '';
+  if (sub) html += `
+    <div class="kpi-card">
+      <div class="kpi-card-label">サブスク解約（当月）</div>
+      <div class="kpi-card-big">${kpiDisp(sub[1])}<span class="kpi-card-unit">名</span></div>
+      <div class="kpi-card-sub">南砂 ${n(sub[2])}・塩浜 ${n(sub[3])}・東砂 ${n(sub[4])}</div>
+    </div>`;
+  if (od) html += `
+    <div class="kpi-card">
+      <div class="kpi-card-label">オーダー回数券 未更新</div>
+      <div class="kpi-card-big">${n(od[1])}<span class="kpi-card-unit">名</span></div>
+      <div class="kpi-card-sub">うち当月使い切り ${n(od[2])}名</div>
+    </div>`;
+  if (op) html += `
+    <div class="kpi-card">
+      <div class="kpi-card-label">オプチケ 未更新</div>
+      <div class="kpi-card-big">${n(op[1])}<span class="kpi-card-unit">名</span></div>
+      <div class="kpi-card-sub">うち当月使い切り ${n(op[2])}名</div>
+    </div>`;
+  el.innerHTML = html;
 }
 
 // ストック: 施術者別オプションチケット保有（台帳サマリーのオプチケ保有列＝E列をミラー。目標なしの現況表示 2026-08-21）
