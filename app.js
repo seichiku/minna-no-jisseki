@@ -991,6 +991,7 @@ function renderKpi() {
   renderKpiFlowTable();  // 当月フロー指標表
   renderKpiLeading();    // 先行指標
   renderKpiStock();      // ストックタブ：サブスク
+  renderKpiSubStaff();   // ストックタブ：サブスク施術者別（当月サブ消化の担当会員数 2026-08-26）
   renderKpiOrder();      // ストックタブ：オーダー回数券
   renderKpiOpt();        // ストックタブ：オプションチケット（施術者別保有 2026-08-21）
   renderClinicPages();   // 各院ページ（ペースチャート・日次達成・個人マイルストーン等）
@@ -1627,6 +1628,25 @@ function renderKpiOrder() {
 }
 
 // ③ 先行指標（次予約クロージングはライブ、他は器）
+// ストック: サブスク施術者別（台帳サマリーF列＝当月サブ消化の担当会員数。構築GASが日計表から集計 2026-08-26）
+function renderKpiSubStaff() {
+  const el = document.getElementById('kpiSubStaff');
+  if (!el) return;
+  if (kpiAccessError || !kpiKaisu) { el.innerHTML = ''; return; }
+  let any = false;
+  const cards = CONFIG.KPI.STAFF.map(name => {
+    const row = kpiFindRow(kpiKaisu, name);
+    const n = row ? kpiNum(row[5]) : 0;
+    if (row && row[5] !== undefined && String(row[5]).trim() !== '') any = true;
+    return `
+      <div class="kpi-gauge">
+        <div class="kpi-gauge-name">${name}</div>
+        <div class="kpi-gauge-num">${n}<span class="kpi-card-unit">名</span></div>
+      </div>`;
+  });
+  el.innerHTML = any ? cards.join('') : `<div class="kpi-note">当月の集計待ちです（毎日13/21時更新）。</div>`;
+}
+
 // ストック: 施術者別オプションチケット保有（台帳サマリーのオプチケ保有列＝E列をミラー。目標なしの現況表示 2026-08-21）
 function renderKpiOpt() {
   const el = document.getElementById('kpiOptCards');
