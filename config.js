@@ -152,7 +152,7 @@ const CONFIG = {
     LOG_SHEET: '行動ログ',
     LOG_COL: { date: 0, clinic: 1, staff: 2, kind: 3, count: 4, cat: 6 },  // 中継APIがslim済み
     ASA_ID: '1xRXcMz1DzWUjvDZkZ2Jgoq9F_OewgKiTYyU4cKvA1ZM',  // 朝の仕込みDB
-    ASA_SHEET: 'Form Responses 1',
+    ASA_SHEET: '2026/8/28~',   // 2026-08-27 質問改定で新シート化（日付入り名。質問改定ごとに紐づけ直し→新タブ名に更新）
     ASA_COL: { date: 2, staff: 3 },  // 【宣言】列はヘッダー文字列から動的検出
     FORM_URL: 'https://docs.google.com/forms/d/e/1FAIpQLScNDzV3os7TQpv2ynbrQQuHZZZLerm3RF6ykZpuELBU4FstWQ/viewform',
     LOG_URL: 'https://docs.google.com/spreadsheets/d/1Xwdlni7dCWkeFGu5NSvuwzTxMbCni5aR7Pdqm_zhFg8/edit',
