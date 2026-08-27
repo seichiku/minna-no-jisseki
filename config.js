@@ -18,6 +18,19 @@ const CONFIG = {
   // ※ 正式な判定は Apps Script 側でも行う（クライアント側は早期チェック用）。
   ALLOWED_DOMAINS: ['seichiku.org'],
 
+  // ドメイン外でも許可する個人アドレス（名指しホワイトリスト 2026-08-27）
+  // スマホの個人Gmailのまま閲覧できるようにする。Code.gs 側の ALLOWED_EMAILS と揃えること。
+  ALLOWED_EMAILS: [
+    'lsdcompany0130@gmail.com',   // 竹中
+    '0919u.yuji0919@gmail.com',   // 植田
+    'u.snooow1@gmail.com',        // 白田
+    'my.b.naaaao@gmail.com',      // 有山
+    'y41891189@gmail.com',        // 篠田
+    'nightmare8121@gmail.com',    // 中谷
+    'jun.ishi0615@gmail.com',     // 石本
+    '1005revo@gmail.com'          // 加藤
+  ],
+
   // 日報データベース スプレッドシートID
   SPREADSHEET_ID: '1VtEYc26jifylOmEewOQSalzPNwT0MDXx9hupQiTLDo4',
 
@@ -126,6 +139,31 @@ const CONFIG = {
       { v: 1350000, l: '135万' },
       { v: 1500000, l: '150万', note: '余剰30万' },
     ],
+  },
+
+  // ============================================================
+  // 行動ログ×朝の宣言（2026-08-27 ループ連動）
+  // 戦術ダッシュボード「行動ログ」＝実行（1行=1アクション・種別プルダウン）、
+  // 朝の仕込みフォーム＝宣言（オプション/オーダー/サブスク提案数）。
+  // LPは両方を突合して「昨日の宣言 vs 実行」「先行指標の内訳」をライブ表示する。
+  // ============================================================
+  ACTIONS: {
+    TAC_ID: '1Xwdlni7dCWkeFGu5NSvuwzTxMbCni5aR7Pdqm_zhFg8',  // 戦術ダッシュボード
+    LOG_SHEET: '行動ログ',
+    LOG_COL: { date: 0, clinic: 1, staff: 2, kind: 3, count: 4, cat: 6 },  // 中継APIがslim済み
+    ASA_ID: '1xRXcMz1DzWUjvDZkZ2Jgoq9F_OewgKiTYyU4cKvA1ZM',  // 朝の仕込みDB
+    ASA_SHEET: 'Form Responses 1',
+    ASA_COL: { date: 2, staff: 3 },  // 【宣言】列はヘッダー文字列から動的検出
+    FORM_URL: 'https://docs.google.com/forms/d/e/1FAIpQLScNDzV3os7TQpv2ynbrQQuHZZZLerm3RF6ykZpuELBU4FstWQ/viewform',
+    LOG_URL: 'https://docs.google.com/spreadsheets/d/1Xwdlni7dCWkeFGu5NSvuwzTxMbCni5aR7Pdqm_zhFg8/edit',
+    GOAL_TENKAN: 300,   // 転換提案 全社/月（戦術タブF列が取れない時のフォールバック）
+  },
+
+  // 今月の院テーマ（2026-08-27 竹中指示）
+  // 南砂・東砂＝客単価を¥5,000超へ／塩浜＝新再診（初再診）の通院頻度を月4回へ
+  FOCUS: {
+    TANKA_GOAL: 5000,
+    FREQ_GOAL: 4,
   },
 
   // ============================================================

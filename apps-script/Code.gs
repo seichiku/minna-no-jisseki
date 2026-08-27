@@ -21,6 +21,19 @@ var CLIENT_ID = '248673786507-mdqci7it6nokcerj001k226k6fungjeu.apps.googleuserco
 // ログインを許可するドメイン
 var ALLOWED_DOMAIN = 'seichiku.org';
 
+// ドメイン外でもログインを許可する個人アドレス（名指しホワイトリスト 2026-08-27）
+// スタッフがスマホの個人Gmailのまま閲覧できるようにする。退職時はここから削除。
+var ALLOWED_EMAILS = [
+  'lsdcompany0130@gmail.com',   // 竹中
+  '0919u.yuji0919@gmail.com',   // 植田
+  'u.snooow1@gmail.com',        // 白田
+  'my.b.naaaao@gmail.com',      // 有山
+  'y41891189@gmail.com',        // 篠田
+  'nightmare8121@gmail.com',    // 中谷
+  'jun.ishi0615@gmail.com',     // 石本
+  '1005revo@gmail.com'          // 加藤
+];
+
 // シート束のキャッシュ保持秒数（分析シートは毎日13/21時更新なので5分で十分新鮮）
 var CACHE_TTL_SEC = 300;
 
@@ -31,6 +44,8 @@ var KAISU_ID    = '1TZjeowvbF6fqPA2BmE-ryxk360v3E-ZkSgBbknMCMc4'; // 回数券�
 var ANALYSIS_ID = '1mIGrmd9S6QrOZz8t5Ntqm9Tqs37JWW_aVVb54AZjh94'; // 分析シート
 var MASTER_ID   = '17vs50q2yaxK1NmuHaUgczXS8WMJQH38SSI65yhw3YaQ'; // 顧客マスタ（離客フォローリスト用）
 var WEEKLY_ID   = '1NiYQORX9I7imdlt-ycY6_Ry0CqYl0Y0W6gwS0mFqfvM'; // 週次効果測定ダッシュボード（口コミ回収 2026-08-21）
+var TAC_ID      = '1Xwdlni7dCWkeFGu5NSvuwzTxMbCni5aR7Pdqm_zhFg8'; // 戦術ダッシュボード（行動ログ 2026-08-27）
+var ASA_ID      = '1xRXcMz1DzWUjvDZkZ2Jgoq9F_OewgKiTYyU4cKvA1ZM'; // 朝の仕込みDB（今日の宣言 2026-08-27）
 
 // 返すシート一覧 [スプレッドシートID, シート名]。キーは "ID|シート名"。
 var SHEET_SPECS = [
@@ -46,6 +61,8 @@ var SHEET_SPECS = [
   [ANALYSIS_ID, '個人ランキング'],      // 個人ランキング
   [MASTER_ID,   '顧客マスタ'],           // 離客フォローリスト（氏名×院×最終来院日）
   [WEEKLY_ID,   'GBP(3店舗)'],          // 口コミ回収の現状（クチコミ累計/週増分/評価・毎週水曜更新）
+  [TAC_ID,      '行動ログ'],             // 提案/LINE/ロープレの生ログ（宣言vs実行・先行指標の内訳）
+  [ASA_ID,      'Form Responses 1'],    // 朝の仕込み＝今日の宣言（オプション/オーダー/サブスク提案数）
 ];
 
 function doPost(e) {
@@ -69,7 +86,8 @@ function doPost(e) {
     // ドメイン制限
     var email = claims.email || '';
     var domain = email.split('@')[1];
-    if (ALLOWED_DOMAIN && domain !== ALLOWED_DOMAIN) {
+    if (ALLOWED_DOMAIN && domain !== ALLOWED_DOMAIN &&
+        ALLOWED_EMAILS.indexOf(String(email).toLowerCase()) < 0) {
       return json_({ ok: false, error: 'domain_forbidden', domain: domain });
     }
 
@@ -107,6 +125,10 @@ function doPost(e) {
         var grid = sh ? sh.getDataRange().getDisplayValues() : [];
         // 顧客マスタは離客リストに使う3列（B=氏名/E=院/K=最終来院日）だけ返す（列位置は維持）
         if (id === MASTER_ID) grid = slimMaster_(grid);
+        // 行動ログは空行（数式だけの行）を落として入力済み行だけ返す
+        if (id === TAC_ID) grid = slimTac_(grid);
+        // 朝の仕込みはメールアドレス等を落とし、日付/担当者/役割/【宣言】列だけ返す
+        if (id === ASA_ID) grid = slimAsa_(grid);
         sheets[key] = grid;
         try { cacheSvc.put(ck, JSON.stringify(grid), CACHE_TTL_SEC); } catch (ignore) {}
       } catch (err) {
@@ -133,6 +155,40 @@ function slimMaster_(grid) {
     row[1] = r[1] || '';   // 氏名
     row[4] = r[4] || '';   // 院
     row[10] = r[10] || ''; // 最終来院日
+    out.push(row);
+  }
+  return out;
+}
+
+// 行動ログ（5000行の数式プリセット行が並ぶ）から、入力済み行＋ヘッダー2行だけを
+// A〜E列（日付/院/担当者/種別/件数）＋G列（カテゴリ自動）に間引く（列位置は維持）
+function slimTac_(grid) {
+  var out = [];
+  for (var i = 0; i < grid.length; i++) {
+    var r = grid[i] || [];
+    if (i >= 2 && String(r[0] || '') === '') continue;   // 未入力行はスキップ
+    var row = [];
+    row[0] = r[0] || ''; row[1] = r[1] || ''; row[2] = r[2] || '';
+    row[3] = r[3] || ''; row[4] = r[4] || ''; row[6] = r[6] || '';
+    out.push(row);
+  }
+  return out;
+}
+
+// 朝の仕込みDBを Timestamp/日付/担当者/役割＋「【宣言】」で始まる列だけに間引く
+// （メールアドレスや自由記述の仕込み本文はLPに送らない）
+function slimAsa_(grid) {
+  if (!grid || !grid.length) return grid;
+  var head = grid[0] || [];
+  var keep = [0, 2, 3, 4];
+  for (var c = 0; c < head.length; c++) {
+    if (String(head[c]).indexOf('【宣言】') === 0) keep.push(c);
+  }
+  var out = [];
+  for (var i = 0; i < grid.length; i++) {
+    var r = grid[i] || [];
+    var row = [];
+    for (var k = 0; k < keep.length; k++) row[keep[k]] = r[keep[k]] || '';
     out.push(row);
   }
   return out;

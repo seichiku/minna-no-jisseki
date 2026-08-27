@@ -77,11 +77,14 @@ async function handleCredential(response) {
   }
 
   // クライアント側の早期チェック（正式な検証は Apps Script 側で実施）
+  // 2026-08-27: seichiku.org ドメインに加えて個人Gmailホワイトリスト（ALLOWED_EMAILS）を許可
   const claims = decodeJwt(credential);
   if (claims && CONFIG.ALLOWED_DOMAINS.length > 0) {
-    const domain = (claims.email || '').split('@')[1];
-    if (!CONFIG.ALLOWED_DOMAINS.includes(domain)) {
-      showLoginError(`${domain} ドメインではログインできません。@seichiku.org アカウントを使用してください。`);
+    const email = (claims.email || '').toLowerCase();
+    const domain = email.split('@')[1];
+    const whitelisted = (CONFIG.ALLOWED_EMAILS || []).map(e => e.toLowerCase()).includes(email);
+    if (!CONFIG.ALLOWED_DOMAINS.includes(domain) && !whitelisted) {
+      showLoginError(`このアカウント（${claims.email || ''}）ではログインできません。@seichiku.org アカウントか、登録済みの個人Gmailを使用してください。`);
       google.accounts.id.disableAutoSelect();
       return;
     }
@@ -138,7 +141,7 @@ async function loadAllData(credential) {
         // 認証系エラー：ログイン画面へ戻す
         document.getElementById('mainApp').style.display = 'none';
         document.getElementById('loginScreen').style.display = 'flex';
-        showLoginError('ログインが確認できませんでした。@seichiku.org アカウントで再度お試しください。');
+        showLoginError('ログインが確認できませんでした。@seichiku.org アカウントか登録済みGmailで再度お試しください。');
         google.accounts.id.disableAutoSelect();
         return;
       }
@@ -692,6 +695,8 @@ let kpiFlowError = false;     // 分析シート共有エラー
 let kpiMaster = null;         // 顧客マスタ「顧客マスタ」grid（離客フォローリスト用）
 let kpiMasterError = false;   // 顧客マスタ共有エラー
 let kpiKuchikomi = null;      // 週次効果測定「GBP(3店舗)」grid（口コミ回収の現状 2026-08-22）
+let kpiActLog = null;         // 戦術ダッシュボード「行動ログ」grid（提案/LINE/ロープレの実行 2026-08-27）
+let kpiAsa = null;            // 朝の仕込みDB grid（今日の宣言 2026-08-27）
 
 async function loadKpiData() {
   // ストック（会員名簿・回数券台帳）
@@ -744,6 +749,19 @@ async function loadKpiData() {
   } catch (err) {
     console.warn('口コミ(週次GBP)読込失敗:', err);
     kpiKuchikomi = null;
+  }
+  // 行動ログ×朝の宣言（取得できなくても他は出す 2026-08-27）
+  try {
+    kpiActLog = await fetchSheet(CONFIG.ACTIONS.TAC_ID, CONFIG.ACTIONS.LOG_SHEET);
+  } catch (err) {
+    console.warn('行動ログ読込失敗:', err);
+    kpiActLog = null;
+  }
+  try {
+    kpiAsa = await fetchSheet(CONFIG.ACTIONS.ASA_ID, CONFIG.ACTIONS.ASA_SHEET);
+  } catch (err) {
+    console.warn('朝の仕込み(宣言)読込失敗:', err);
+    kpiAsa = null;
   }
 }
 
@@ -1270,7 +1288,9 @@ function forecastHtml(name) {
     </div>`;
 }
 
-// 院ごとの重点KPI（南砂=客単価／塩浜=通院頻度。Notion現状分析 2026-07 より）
+// 今月の院テーマ（2026-08-27 竹中指示で刷新）
+// 南砂・東砂＝客単価を¥5,000超へ／塩浜＝新再診（初再診）の通院頻度を月4回へ。
+// 数字はフロー（3院）タブ（毎日13/21時更新）から。
 function focusKpiHtml(name) {
   const num = v => parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')) || 0;
   const sig = b => b === 'green' ? '🟢' : (b === 'yellow' ? '🟡' : '🔴');
@@ -1281,35 +1301,37 @@ function focusKpiHtml(name) {
       <div class="kpi-card-sub">${sub}</div>
     </div>`;
   const cards = [];
-  if (name === '南砂') {
+  if (name === '南砂' || name === '東砂') {
+    const goal = (CONFIG.FOCUS && CONFIG.FOCUS.TANKA_GOAL) || 5000;
     const t = flowMetric('客単価');
     if (t && String(t[name] || '').trim() !== '' && t[name] !== '—') {
       const v = num(t[name]);
-      const band = v >= 3500 ? 'green' : (v >= 3300 ? 'yellow' : 'red');
-      cards.push(cardHtml(band, '客単価（売上÷延べ来院）', kpiDisp(t[name]),
-        '目安 ¥3,500＝150万に必要な単価。グループ上限¥3,300の壁を破る（自費オプション・回数券・サブスクの一言提案）'));
+      const band = v >= goal ? 'green' : (v >= goal * 0.8 ? 'yellow' : 'red');
+      cards.push(cardHtml(band, `客単価（目標 ¥${goal.toLocaleString('ja-JP')}超）`, kpiDisp(t[name]),
+        `売上÷延べ来院。あと ¥${Math.max(0, goal - v).toLocaleString('ja-JP')}。上げ方＝オプション・回数券・サブスクの「一言提案」（宣言→実行の答え合わせは下の表）`));
     }
   }
   if (name === '塩浜') {
+    const goal = (CONFIG.FOCUS && CONFIG.FOCUS.FREQ_GOAL) || 4;
     const f1 = flowMetric('初再診 通院頻度');
     if (f1 && String(f1[name] || '').trim() !== '' && f1[name] !== '—') {
       const v1 = num(f1[name]);
-      const b1 = v1 >= 2.5 ? 'green' : (v1 >= 2.0 ? 'yellow' : 'red');
-      cards.push(cardHtml(b1, '初再診の通院頻度', kpiDisp(f1[name]),
-        '当月に初診・再診で来た方の平均来院回数。1回台＝「初回の壁」で消えている（新患の48%が初月のみの構造）'));
+      const b1 = v1 >= goal ? 'green' : (v1 >= goal * 0.75 ? 'yellow' : 'red');
+      cards.push(cardHtml(b1, `新再診の通院頻度（目標 月${goal}回）`, kpiDisp(f1[name]),
+        '当月に初診・再診で来た方の平均来院回数。初回の壁を越える＝次回予約クロージングと通院計画の提示が打ち手'));
     }
     const f2 = flowMetric('通院頻度(全患者)');
     if (f2 && String(f2[name] || '').trim() !== '' && f2[name] !== '—') {
       const v2 = num(f2[name]);
       const b2 = v2 >= 4.6 ? 'green' : (v2 >= 4.0 ? 'yellow' : 'red');
       cards.push(cardHtml(b2, '通院頻度（全患者）', kpiDisp(f2[name]),
-        '目標 4.6回/人（南砂水準）。南砂との売上差の約8割はこの差'));
+        '参考 4.6回/人（南砂水準）。南砂との売上差の約8割はこの差'));
     }
   }
   if (!cards.length) return '';
   return `
     <div class="kpi-block">
-      <h3 class="kpi-h">この院の重点KPI<span class="kpi-tag live">LIVE</span></h3>
+      <h3 class="kpi-h">今月の院テーマ<span class="kpi-tag live">LIVE</span></h3>
       <div class="kpi-cards" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));">${cards.join('')}</div>
     </div>`;
 }
@@ -1477,7 +1499,7 @@ function renderClinicPages() {
           <div class="clinic-hero-item"><span>今日までの予定</span><b>${p ? yenFmt(p.paceTarget) : '—'}</b></div>
         </div>
       </div>`;
-    el.innerHTML = hero + focusKpiHtml(name) + forecastHtml(name) + clinicChartHtml(name) + `
+    el.innerHTML = hero + focusKpiHtml(name) + declVsActHtml(name) + forecastHtml(name) + clinicChartHtml(name) + `
       <div class="kpi-block">
         <h3 class="kpi-h">日次達成（毎日の予算達成）<span class="kpi-tag live">LIVE</span></h3>
         <p class="section-desc" style="margin:0 0 10px;">当日院売上 ÷ 日割予算。🟢100%以上 / 🟡80-99% / 🔴79%以下。空欄＝休診/未到来。</p>
@@ -1638,15 +1660,18 @@ function renderKpiSubStaff() {
   const el = document.getElementById('kpiSubStaff');
   if (!el) return;
   if (kpiAccessError || !kpiKaisu) { el.innerHTML = ''; return; }
+  const st = actStats();   // 2026-08-27: 提案数（行動ログ）を成約数の隣に表示
   let any = false;
   const cards = CONFIG.KPI.STAFF.map(name => {
     const row = kpiFindRow(kpiKaisu, name);
     const n = row ? kpiNum(row[5]) : 0;
     if (row && row[5] !== undefined && String(row[5]).trim() !== '') any = true;
+    const prop = st && st.byStaff[name] ? st.byStaff[name].month.sub : 0;
     return `
       <div class="kpi-gauge">
         <div class="kpi-gauge-name">${name}</div>
         <div class="kpi-gauge-num">${n}<span class="kpi-card-unit">件</span></div>
+        <div class="kpi-card-sub">提案 ${prop}件（今月）</div>
       </div>`;
   });
   el.innerHTML = any ? cards.join('') : `<div class="kpi-note">当月の集計待ちです（毎日13/21時更新）。</div>`;
@@ -1735,10 +1760,35 @@ function renderKpiLeading() {
       </div>`;
   }
 
-  // 戦術ダッシュボード（先行指標）ライブ：転換提案/LINE発信/ロープレ（全社）
-  let html = tacticCard('転換 提案数（全社・今月）', '転換 提案数');
-  html += tacticCard('LINE 発信数（全社・今月）', 'LINE 発信数');
-  html += tacticCard('ロープレ 実施数（全社・今月）', 'ロープレ 実施数');
+  // 2026-08-27: 行動ログから直接ライブ集計（13/21時のGAS更新を待たない）。
+  // ログが読めない時は従来どおり分析シート「戦術（先行指標）」の値にフォールバック。
+  const st = actStats();
+  let html;
+  if (st) {
+    const tenkan = st.total.opt + st.total.order + st.total.sub;
+    const gRow = tRow('転換 提案数');
+    const gRaw = gRow ? String(gRow[5] == null ? '' : gRow[5]).trim() : '';
+    const goal = gRaw && gRaw !== '—' ? gRaw : String(CONFIG.ACTIONS.GOAL_TENKAN);
+    html = `<div class="kpi-card">
+        <div class="kpi-card-label">転換 提案数（全社・今月）</div>
+        <div class="kpi-card-big">${tenkan}<span class="kpi-card-unit"> / 目標 ${goal}</span></div>
+        <div class="kpi-card-sub">オプション ${st.total.opt}・オーダー ${st.total.order}・サブスク ${st.total.sub}<span class="kpi-tag live">LIVE</span></div>
+      </div>`;
+    html += `<div class="kpi-card">
+        <div class="kpi-card-label">LINE 発信数（全社・今月）</div>
+        <div class="kpi-card-big">${st.total.line}</div>
+        <div class="kpi-card-sub"><span class="kpi-tag live">LIVE</span></div>
+      </div>`;
+    html += `<div class="kpi-card">
+        <div class="kpi-card-label">ロープレ 実施数（全社・今月）</div>
+        <div class="kpi-card-big">${st.total.rope}<span class="kpi-card-unit"> / 毎週</span></div>
+        <div class="kpi-card-sub"><span class="kpi-tag live">LIVE</span></div>
+      </div>`;
+  } else {
+    html = tacticCard('転換 提案数（全社・今月）', '転換 提案数');
+    html += tacticCard('LINE 発信数（全社・今月）', 'LINE 発信数');
+    html += tacticCard('ロープレ 実施数（全社・今月）', 'ロープレ 実施数');
+  }
   // 口コミ回収（毎月3件目標/店舗・週次効果測定のGBPタブから 2026-08-22）
   html += kuchikomiCards();
   el.innerHTML = html;
@@ -1788,6 +1838,180 @@ function kuchikomiCards() {
         <div class="kpi-card-sub">${sub}</div>
       </div>`;
   }).join('');
+}
+
+// ============================================================
+// 行動ログ×朝の宣言（2026-08-27 ループ連動）
+// 戦術ダッシュボード「行動ログ」＝実行（1行=1アクション）、
+// 朝の仕込みフォーム＝宣言（オプション/オーダー/サブスク提案数）。
+// 突合して「昨日の宣言 vs 実行」を各院ページに表示する。
+// ============================================================
+function dateKeyOf(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+function dayKey(offsetDays) {
+  const d = new Date();
+  d.setDate(d.getDate() + (offsetDays || 0));
+  return dateKeyOf(d);
+}
+// カテゴリ（行動ログG列＝種別マスタ由来）→ 集計キー
+function actCatKey(cat) {
+  const c = String(cat || '');
+  if (c.includes('オプション')) return 'opt';
+  if (c.includes('オーダー')) return 'order';
+  if (c.includes('サブスク') || c.includes('筋トレ')) return 'sub';
+  if (c.includes('LINE')) return 'line';
+  if (c.includes('ロープレ')) return 'rope';
+  return null;
+}
+function actZero() { return { opt: 0, order: 0, sub: 0, line: 0, rope: 0 }; }
+
+// 行動ログの当月分を集計 → { total, byClinic, byStaff: {姓: {month, byDate}} }（ログ未取得なら null）
+let __actStatsCache;
+function actStats() {
+  if (__actStatsCache !== undefined) return __actStatsCache;
+  if (!kpiActLog || kpiActLog.length < 3) return (__actStatsCache = null);
+  const C = CONFIG.ACTIONS.LOG_COL;
+  const ym = ymKey(0);
+  const out = { total: actZero(), byClinic: {}, byStaff: {} };
+  CONFIG.KPI.CLINICS.forEach(c => out.byClinic[c] = actZero());
+  for (let i = 2; i < kpiActLog.length; i++) {
+    const r = kpiActLog[i] || [];
+    const d = parseVisitDate(r[C.date]);
+    if (!d) continue;
+    const dk = dateKeyOf(d);
+    if (dk.slice(0, 7) !== ym) continue;
+    const catSrc = String(r[C.cat] == null ? '' : r[C.cat]).trim() || r[C.kind];
+    const key = actCatKey(catSrc);
+    if (!key) continue;
+    const raw = String(r[C.count] == null ? '' : r[C.count]).trim();
+    const n = raw === '' ? 1 : (kpiNum(raw) || 0);   // 件数 空欄=1件
+    if (!n) continue;
+    out.total[key] += n;
+    const clinic = String(r[C.clinic] || '').replace('院', '').trim();
+    if (out.byClinic[clinic]) out.byClinic[clinic][key] += n;
+    const staff = String(r[C.staff] || '').trim();
+    if (staff) {
+      const s = out.byStaff[staff] || (out.byStaff[staff] = { month: actZero(), byDate: {} });
+      s.month[key] += n;
+      const bd = s.byDate[dk] || (s.byDate[dk] = actZero());
+      bd[key] += n;
+    }
+  }
+  return (__actStatsCache = out);
+}
+
+// 朝の仕込みの【宣言】列（ヘッダー文字列で動的検出）→ { '姓|yyyy-mm-dd': {opt,order,sub} }
+// フォームの担当者はフルネーム（例: 植田祐司）なので姓に正規化して突合する。
+let __asaDeclsCache;
+function asaDecls() {
+  if (__asaDeclsCache !== undefined) return __asaDeclsCache;
+  if (!kpiAsa || kpiAsa.length < 2) return (__asaDeclsCache = null);
+  const head = kpiAsa[0] || [];
+  const cols = {};
+  for (let c = 0; c < head.length; c++) {
+    const h = String(head[c] || '');
+    if (h.indexOf('【宣言】') !== 0) continue;
+    if (h.includes('オプション')) cols.opt = c;
+    else if (h.includes('オーダー')) cols.order = c;
+    else if (h.includes('サブスク')) cols.sub = c;
+  }
+  if (cols.opt == null && cols.order == null && cols.sub == null) return (__asaDeclsCache = null);
+  const A = CONFIG.ACTIONS.ASA_COL;
+  const names = (CONFIG.KPI.STAFF || []).concat(['有山', '竹中', '羽田']);
+  const surname = full => {
+    const f = String(full || '').trim();
+    for (const s of names) { if (f.indexOf(s) === 0) return s; }
+    return f;
+  };
+  const byKey = {};
+  for (let i = 1; i < kpiAsa.length; i++) {
+    const r = kpiAsa[i] || [];
+    const d = parseVisitDate(r[A.date]);
+    if (!d) continue;
+    const key = surname(r[A.staff]) + '|' + dateKeyOf(d);
+    const rec = byKey[key] || (byKey[key] = { opt: null, order: null, sub: null });
+    ['opt', 'order', 'sub'].forEach(k => {
+      if (cols[k] == null) return;
+      const v = String(r[cols[k]] == null ? '' : r[cols[k]]).trim();
+      if (v !== '') rec[k] = kpiNum(v);   // 同日に複数回答があれば後勝ち
+    });
+  }
+  return (__asaDeclsCache = byKey);
+}
+
+// 個人ランキングタブから院所属の施術者リストを取得
+function clinicStaffList(name) {
+  if (!kpiPersonalGrid) return [];
+  let hi = -1;
+  for (let i = 0; i < kpiPersonalGrid.length; i++) {
+    if (String((kpiPersonalGrid[i] || [])[0]).trim() === '順位') { hi = i; break; }
+  }
+  if (hi < 0) return [];
+  const out = [];
+  for (let i = hi + 1; i < kpiPersonalGrid.length; i++) {
+    const r = kpiPersonalGrid[i] || [];
+    const staff = String(r[1] || '').trim();
+    if (!staff) break;
+    if ((CONFIG.KPI.HIDE_STAFF || []).includes(staff)) continue;
+    const clinic = String(r[2] || '').trim();
+    if (clinic.includes(name) || name.includes(clinic)) out.push(staff);
+  }
+  return out;
+}
+
+// 各院ページ「今日のアクション（宣言 vs 実行）」ブロック
+function declVsActHtml(name) {
+  const staffList = clinicStaffList(name);
+  if (!staffList.length) return '';
+  const st = actStats();
+  const decls = asaDecls();
+  const tKey = dayKey(0), yKey = dayKey(-1);
+  const A = CONFIG.ACTIONS;
+  const sum3 = o => o ? (o.opt || 0) + (o.order || 0) + (o.sub || 0) : 0;
+  const hasDecl = o => !!(o && (o.opt != null || o.order != null || o.sub != null));
+  const detail = o => o ? `オプ${o.opt || 0}・オーダー${o.order || 0}・サブ${o.sub || 0}` : '';
+  let rows = '';
+  staffList.forEach(s => {
+    const d0 = decls ? decls[s + '|' + tKey] : null;
+    const d1 = decls ? decls[s + '|' + yKey] : null;
+    const staffStat = st ? st.byStaff[s] : null;
+    const a1 = staffStat ? staffStat.byDate[yKey] : null;
+    const m = staffStat ? staffStat.month : null;
+    const today = hasDecl(d0)
+      ? `<b>${sum3(d0)}件</b> <span class="dv-detail">${detail(d0)}</span>`
+      : '<span class="dv-none">未宣言</span>';
+    const yDecl = hasDecl(d1) ? sum3(d1) : null;
+    const yAct = sum3(a1);
+    let yCell;
+    if (yDecl == null && !yAct) {
+      yCell = '<span class="dv-muted">—</span>';
+    } else if (yDecl == null) {
+      yCell = `実行 ${yAct}件（宣言なし）`;
+    } else {
+      const sig = yAct >= yDecl ? ((yDecl > 0 || yAct > 0) ? '🟢' : '') : (yAct > 0 ? '🟡' : '🔴');
+      yCell = `宣言 ${yDecl} → 実行 <b>${yAct}件</b> ${sig}`;
+    }
+    const month = m
+      ? `転換 ${m.opt + m.order + m.sub}・LINE ${m.line}`
+      : '<span class="dv-muted">0</span>';
+    rows += `<tr><td class="ft-label">${escHtml(s)}</td><td>${today}</td><td>${yCell}</td><td>${month}</td></tr>`;
+  });
+  const note = st ? '' : `<div class="kpi-note" style="margin:0 0 10px;">行動ログの入力が始まると「実行」がここに出ます。</div>`;
+  return `
+    <div class="kpi-block">
+      <h3 class="kpi-h">今日のアクション（宣言 vs 実行）<span class="kpi-tag live">LIVE</span></h3>
+      <p class="section-desc" style="margin:0 0 10px;">朝の仕込みで宣言した提案数と、行動ログに入れた実行数の毎日の答え合わせ。提案は成約の前段＝この数が増えれば売上がついてきます。</p>
+      ${note}
+      <div class="flow-table-wrap"><table class="flow-table">
+        <thead><tr><th>施術者</th><th>今日の宣言</th><th>昨日（宣言 → 実行）</th><th>当月実行</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="dv-actions">
+        <a class="dv-btn" href="${A.FORM_URL}" target="_blank" rel="noopener">☀️ 朝の仕込み（今日の宣言を入力）</a>
+        <a class="dv-btn ghost" href="${A.LOG_URL}" target="_blank" rel="noopener">✍️ 行動ログ（実行を入力）</a>
+      </div>
+    </div>`;
 }
 
 // ============================================================

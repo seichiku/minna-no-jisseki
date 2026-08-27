@@ -520,3 +520,42 @@ body {
 /* 情報量の多いカード（院別ペース・個人マイルストーン）は広めに */
 #kpiBudget { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
 .ms-cards { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+
+/* ============================================================
+   2026-08-27 ループ連動（朝1分ガイド・宣言vs実行）
+   ============================================================ */
+.guide-strip {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 12px;
+  padding: 10px 16px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.guide-title { font-weight: 700; white-space: nowrap; }
+.guide-steps { opacity: 0.95; }
+.dv-btn {
+  display: inline-block;
+  padding: 8px 16px;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #2b3a67;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  white-space: nowrap;
+}
+.dv-btn:hover { opacity: 0.9; }
+.kpi-block .dv-btn { background: #2b3a67; color: #fff; }
+.kpi-block .dv-btn.ghost { background: #fff; color: #2b3a67; border: 1px solid #2b3a67; }
+.dv-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+.dv-none { color: #c2410c; font-weight: 700; }
+.dv-muted { color: var(--text-light); }
+.dv-detail { font-size: 11px; color: var(--text-light); }
