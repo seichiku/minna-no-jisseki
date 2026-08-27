@@ -34,11 +34,11 @@ var ALLOWED_EMAILS = [
   '1005revo@gmail.com'          // 加藤
 ];
 
-// シート束のキャッシュ保持秒数（分析シートは毎日13/21時更新なので5分で十分新鮮）
-var CACHE_TTL_SEC = 300;
+// シート束のキャッシュ保持秒数。warmCache（5分おきトリガー）が温め続けるので、
+// 実際のデータ鮮度は最大約5分。TTLはトリガー遅延に耐えるよう10分にしている。
+var CACHE_TTL_SEC = 600;
 
 // 読み取り対象スプレッドシート（config.js と対応）
-var DAILY_ID    = '1VtEYc26jifylOmEewOQSalzPNwT0MDXx9hupQiTLDo4'; // 日報データベース
 var MEMBER_ID   = '1GF75uOiAM363___Nf13rkQYTs4vPsEXyr1zt4E1uTUk'; // 会員名簿(サブスク)
 var KAISU_ID    = '1TZjeowvbF6fqPA2BmE-ryxk360v3E-ZkSgBbknMCMc4'; // 回数券残高台帳
 var ANALYSIS_ID = '1mIGrmd9S6QrOZz8t5Ntqm9Tqs37JWW_aVVb54AZjh94'; // 分析シート
@@ -48,10 +48,9 @@ var TAC_ID      = '1Xwdlni7dCWkeFGu5NSvuwzTxMbCni5aR7Pdqm_zhFg8'; // 戦術ダ�
 var ASA_ID      = '1xRXcMz1DzWUjvDZkZ2Jgoq9F_OewgKiTYyU4cKvA1ZM'; // 朝の仕込みDB（今日の宣言 2026-08-27）
 
 // 返すシート一覧 [スプレッドシートID, シート名]。キーは "ID|シート名"。
+// 2026-08-28: 旧日報系3シート（フォームの回答 1/2/3）を除外＝日報システムは7月廃止で
+// LPも未使用。一番重いデータだったため、読み取り時間と転送量を大きく削減。
 var SHEET_SPECS = [
-  [DAILY_ID,    'フォームの回答 2'],   // 日報（症例実績・喜びの声）
-  [DAILY_ID,    'フォームの回答 1'],   // サンクススコアリング
-  [DAILY_ID,    'フォームの回答 3'],   // 深掘り3名
   [MEMBER_ID,   'サマリー'],           // 会員名簿サマリー
   [KAISU_ID,    'サマリー'],           // 回数券台帳サマリー
   [ANALYSIS_ID, '分析'],               // 院予算ブロック
@@ -94,62 +93,74 @@ function doPost(e) {
     // ログイン記録（アクセス解析 2026-08-26）
     try { logAccess_(email, String(claims.name||''), 'login', ''); } catch (ig2) {}
 
-    // 各シートを読み取り（キー = "ID|シート名"）。読めない場合は null（クライアント側で共有案内）。
-    // 2026-08-19: CacheService で5分キャッシュ（全員が同じデータを見るため）。
-    // 初回ログインは従来通り〜10秒だが、キャッシュ命中時は1〜2秒で返る。
-    // 100KB/キー超のシートは put が失敗するので黙ってスキップ＝そのシートだけ毎回読む。
-    var sheets = {};
-    var cache = {};
-    var cacheSvc = CacheService.getScriptCache();
-    for (var i = 0; i < SHEET_SPECS.length; i++) {
-      var id = SHEET_SPECS[i][0];
-      var name = SHEET_SPECS[i][1];
-      var key = id + '|' + name;
-      var ck = 'b1|' + key; // キャッシュキー（形式変更時は b2| に上げて無効化）
+    // シート束を返す（通常はキャッシュ命中＝warmCacheが5分おきに温めている）
+    return json_({
+      ok: true,
+      user: { name: claims.name || '', email: email, picture: claims.picture || '' },
+      sheets: readBundle_(false),
+    });
+  } catch (err) {
+    return json_({ ok: false, error: 'server_error', message: String(err) });
+  }
+}
+
+// ============================================================
+// シート束の読み取り（キー = "ID|シート名"。読めない場合は null）
+// forceRefresh=false: キャッシュ命中分はスキップ（doPost用）
+// forceRefresh=true : 全件読み直してキャッシュを更新（warmCache用）
+// 100KB/キー超のシートは put が失敗するので黙ってスキップ＝そのシートだけ毎回読む。
+// ============================================================
+function readBundle_(forceRefresh) {
+  var sheets = {};
+  var cache = {};
+  var cacheSvc = CacheService.getScriptCache();
+  for (var i = 0; i < SHEET_SPECS.length; i++) {
+    var id = SHEET_SPECS[i][0];
+    var name = SHEET_SPECS[i][1];
+    var key = id + '|' + name;
+    var ck = 'b1|' + key; // キャッシュキー（形式変更時は b2| に上げて無効化）
+    if (!forceRefresh) {
       var hit = cacheSvc.get(ck);
       if (hit != null) {
         sheets[key] = JSON.parse(hit);
         continue;
       }
-      try {
-        var ss = cache[id] || (cache[id] = SpreadsheetApp.openById(id));
-        // 行動ログは2026-08-27夜から月×院別タブ（例:「南砂 8月」）。
-        // キーは従来どおり "TAC_ID|行動ログ" のまま、当月3タブを統合スキーマで返す。
-        if (id === TAC_ID && name === '行動ログ') {
-          var gridT = readTacticsMerged_(ss);
-          sheets[key] = gridT;
-          try { cacheSvc.put(ck, JSON.stringify(gridT), CACHE_TTL_SEC); } catch (ignoreT) {}
-          continue;
-        }
+    }
+    try {
+      var ss = cache[id] || (cache[id] = SpreadsheetApp.openById(id));
+      var grid;
+      if (id === TAC_ID && name === '行動ログ') {
+        // 行動ログは月×院別タブ（例:「南砂 8月」）。キーは従来どおり
+        // "TAC_ID|行動ログ" のまま、当月3タブを統合スキーマで返す。
+        grid = readTacticsMerged_(ss);
+      } else {
         var sh = ss.getSheetByName(name);
-        // 「フロー（3院）」は2026-08-17からタブ名に月が付く（例: フロー（3院）2026年8月）。
-        // キーは従来どおり "ID|フロー（3院）" のまま、プレフィックス一致で実タブを解決する。
+        // 「フロー（3院）」はタブ名に月が付く（例: フロー（3院）2026年8月）→プレフィックス一致で解決
         if (!sh && name === 'フロー（3院）') {
           var pool = ss.getSheets();
           for (var j = 0; j < pool.length; j++) {
             if (pool[j].getName().indexOf(name) === 0) { sh = pool[j]; break; }
           }
         }
-        var grid = sh ? sh.getDataRange().getDisplayValues() : [];
+        grid = sh ? sh.getDataRange().getDisplayValues() : [];
         // 顧客マスタは離客リストに使う3列（B=氏名/E=院/K=最終来院日）だけ返す（列位置は維持）
         if (id === MASTER_ID) grid = slimMaster_(grid);
         // 朝の仕込みはメールアドレス等を落とし、日付/担当者/役割/【宣言】列だけ返す
         if (id === ASA_ID) grid = slimAsa_(grid);
-        sheets[key] = grid;
-        try { cacheSvc.put(ck, JSON.stringify(grid), CACHE_TTL_SEC); } catch (ignore) {}
-      } catch (err) {
-        sheets[key] = null; // アクセス不可（共有未設定）。エラーはキャッシュしない
       }
+      sheets[key] = grid;
+      try { cacheSvc.put(ck, JSON.stringify(grid), CACHE_TTL_SEC); } catch (ignore) {}
+    } catch (err) {
+      sheets[key] = null; // アクセス不可（共有未設定）。エラーはキャッシュしない
     }
-
-    return json_({
-      ok: true,
-      user: { name: claims.name || '', email: email, picture: claims.picture || '' },
-      sheets: sheets,
-    });
-  } catch (err) {
-    return json_({ ok: false, error: 'server_error', message: String(err) });
   }
+  return sheets;
+}
+
+// 5分おきの時間トリガーで実行（トリガーはGASエディタのUIから作成済み）。
+// キャッシュを常に温めておくことで、誰がいつ開いてもキャッシュ命中（1〜3秒）で返す。
+function warmCache() {
+  readBundle_(true);
 }
 
 // 顧客マスタを離客リスト用の3列（B=1/E=4/K=10）だけの疎な行に間引く（クライアントの列番号は不変）

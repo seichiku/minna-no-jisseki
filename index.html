@@ -16,7 +16,7 @@
   <div class="login-card">
     <div class="login-logo">成</div>
     <h1>みんなの実績</h1>
-    <p>当月フロー・ペースチャート・ストック・各院の日次達成・個人ランキング</p>
+    <p>毎朝1分、数字の答え合わせ</p>
     <div id="googleSignInBtn" class="google-btn-wrapper"></div>
     <div id="loginError" class="login-error" style="display:none;"></div>
     <div class="login-note">@seichiku.org アカウント、または登録済みの個人Gmailでログインしてください</div>
@@ -32,14 +32,14 @@
       <div class="hero-logo">成</div>
       <div class="hero-text">
         <h1>みんなの実績</h1>
-        <p>「今日、予定のペースに乗れているか」を毎日見るページ</p>
+        <p>今日、予定のペースに乗れているか</p>
       </div>
       <div class="user-info" id="userInfo"></div>
     </div>
     <!-- 朝1分の使い方（2026-08-27 ループ連動） -->
     <div class="guide-strip">
       <span class="guide-title">☀️ 朝1分の見方</span>
-      <span class="guide-steps">① 自分の院ページで昨日の「宣言 vs 実行」を見る → ② 朝の仕込みで振り返りと今日の宣言（控えは自分のGmailに届く） → ③ 実行したら当日中に行動ログへ</span>
+      <span class="guide-steps">① 院ページで宣言vs実行を見る → ② 朝の仕込みに回答 → ③ 実行は当日中に行動ログへ</span>
       <a class="dv-btn" href="https://docs.google.com/forms/d/e/1FAIpQLScNDzV3os7TQpv2ynbrQQuHZZZLerm3RF6ykZpuELBU4FstWQ/viewform" target="_blank" rel="noopener">朝の仕込みに回答する</a>
     </div>
   </div>
@@ -66,7 +66,7 @@
   <!-- ====== Section 0: チーム実績（当月フロー） ====== -->
   <div id="kpi" class="section active">
     <div class="section-title"><span class="icon">🎯</span> チーム実績（当月フロー）</div>
-    <p class="section-desc">色分けは<b>ペース比</b>＝「今日までに積んでいるはずの予算」に対する進捗（🟢100%以上 / 🟡90-99% / 🔴89%以下）。月の途中でも「予定通り走れているか」がそのまま信号になります。すべて分析シートからのリアルタイム集計です。</p>
+    <p class="section-desc">信号＝ペース比（今日までの予定額への進捗）。🟢100%〜 / 🟡90〜99 / 🔴〜89。</p>
 
     <!-- ① 全社ヒーロー（着地予測） -->
     <div id="kpiHero"></div>
@@ -74,7 +74,7 @@
     <!-- ② ペースチャート -->
     <div class="kpi-block">
       <h3 class="kpi-h">ペースチャート（全社・3店舗合計）<span class="kpi-tag live">LIVE</span></h3>
-      <p class="section-desc" style="margin:0 0 10px;">点線の対角線＝予算ペース。<b>線が対角線より上なら貯金あり</b>、下でも傾きが立っていれば巻き返し中です。縦軸100%＝全社予算。院別のチャートは各院ページにあります。</p>
+      <p class="section-desc" style="margin:0 0 10px;">対角線＝予算ペース。<b>線が上なら貯金あり</b>。</p>
       <div id="kpiPaceChart" class="pace-chart-wrap"></div>
     </div>
 
@@ -100,30 +100,26 @@
   <!-- ====== 各院ページ（南砂/塩浜/東砂） ====== -->
   <div id="clinic0" class="section">
     <div class="section-title"><span class="icon">🏥</span> 南砂院</div>
-    <p class="section-desc">ペースチャート・日次達成・個人マイルストーン・月次指標・離客フォローリスト。分析シート・顧客マスタからライブ集計です。</p>
     <div id="clinicBody0"></div>
   </div>
   <div id="clinic1" class="section">
     <div class="section-title"><span class="icon">🏥</span> 塩浜院</div>
-    <p class="section-desc">ペースチャート・日次達成・個人マイルストーン・月次指標・離客フォローリスト。分析シート・顧客マスタからライブ集計です。</p>
     <div id="clinicBody1"></div>
   </div>
   <div id="clinic2" class="section">
     <div class="section-title"><span class="icon">🏥</span> 東砂院</div>
-    <p class="section-desc">ペースチャート・日次達成・個人マイルストーン・月次指標・離客フォローリスト。分析シート・顧客マスタからライブ集計です。</p>
     <div id="clinicBody2"></div>
   </div>
 
   <!-- ====== Section: ストック ====== -->
   <div id="stock" class="section">
     <div class="section-title"><span class="icon">📦</span> ストック（サブスク・回数券）</div>
-    <p class="section-desc">積み上げ型の収益基盤。会員名簿・回数券残高台帳からリアルタイム集計です。</p>
 
     <div class="kpi-block">
       <h3 class="kpi-h">サブスク <span class="kpi-tag live">LIVE</span></h3>
       <div class="kpi-meter" id="kpiSubMeter"></div>
       <div class="kpi-cards" id="kpiSubClinic"></div>
-      <p class="section-desc" style="margin:14px 0 8px;"><b>施術者別 新規成約数（2026年7月〜累計）</b>＝日計表の「サブ販売」（成約者に6割計上）の件数。消化はカウントしません。</p>
+      <p class="section-desc" style="margin:14px 0 8px;"><b>施術者別 新規成約数（7月〜累計）</b></p>
       <div class="kpi-gauges" id="kpiSubStaff"></div>
     </div>
     <div class="kpi-block">
@@ -132,12 +128,12 @@
     </div>
     <div class="kpi-block">
       <h3 class="kpi-h">ストック離脱 <span class="kpi-tag live">LIVE</span></h3>
-      <p class="section-desc" style="margin:0 0 10px;">サブスク解約＝当月キャンセルの会員数（Square名簿の洗い替え時点）。回数券「未更新」＝使い切り・失効後に新しい券を購入していない人。</p>
+      <p class="section-desc" style="margin:0 0 10px;">解約＝当月キャンセル。未更新＝使い切り後に次を買っていない人。</p>
       <div class="kpi-cards" id="kpiChurnCards"></div>
     </div>
     <div class="kpi-block">
       <h3 class="kpi-h">オプションチケット（施術者別保有）<span class="kpi-tag live">LIVE</span></h3>
-      <p class="section-desc" style="margin:0 0 10px;">成約施術者ごとの有効オプチケ保有件数（残回数あり・失効前）。回数券残高台帳からライブ集計です。</p>
+      <p class="section-desc" style="margin:0 0 10px;">有効オプチケの保有数（残回数あり・失効前）。</p>
       <div class="kpi-gauges" id="kpiOptCards"></div>
     </div>
   </div>
@@ -145,7 +141,7 @@
   <!-- ====== Section 1: 個人ランキング ====== -->
   <div id="personalRanking" class="section">
     <div class="section-title"><span class="icon">🏆</span> 個人ランキング</div>
-    <p class="section-desc">現行日計表「分析」より院横断で集約した個人売上ランキング（施術者のみ）。30万刻みのマイルストーンを一段ずつ上がり、損益分岐120万 → 150万（余剰30万）を目指します。チームファースト＝院予算が土台、個人は成長指標です。</p>
+    <p class="section-desc">個人売上（施術者のみ）。30万刻み → 120万（損益分岐）→ 150万。</p>
     <div id="personalRankingBody"></div>
   </div>
 

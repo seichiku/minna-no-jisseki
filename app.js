@@ -150,8 +150,8 @@ async function loadAllData(credential) {
 
     __bundle = data.sheets || {};
 
-    // loadCaseData は先行指標「次予約クロージング」用に保持（症例タブは非表示）
-    await Promise.all([loadCaseData(), loadKpiData(), loadPersonalRanking()]);
+    // 2026-08-28: loadCaseData（旧日報）は廃止＝中継APIから旧日報3シートを外し高速化
+    await Promise.all([loadKpiData(), loadPersonalRanking()]);
     renderKpi();
     renderPersonalRanking();
     logView('チーム実績');   // 初期表示タブもアクセスログに記録（2026-08-26）
@@ -1173,7 +1173,7 @@ function rihanListHtml(clinicName) {
   return `
     <div class="kpi-block">
       <h3 class="kpi-h">離客フォローリスト<span class="kpi-tag live">LIVE</span></h3>
-      <p class="section-desc" style="margin:0 0 10px;">顧客マスタの最終来院日から算出（カッコ内は最終来院からの経過日数）。声かけ・フォローの対象です。<br>※最終来院日は2026年7月の日計表稼働後に蓄積されるため、リストが揃うのは8〜9月以降になります。</p>
+      <p class="section-desc" style="margin:0 0 10px;">カッコ内＝最終来院からの日数。声かけ対象。</p>
       <div class="rihan-lists">
         <div class="rihan-col">
           <div class="rihan-col-head">1ヶ月離客 <span class="rihan-range">最終来院30〜59日</span><b>${b.m1.length}名</b></div>
@@ -1308,7 +1308,7 @@ function focusKpiHtml(name) {
       const v = num(t[name]);
       const band = v >= goal ? 'green' : (v >= goal * 0.8 ? 'yellow' : 'red');
       cards.push(cardHtml(band, `客単価（目標 ¥${goal.toLocaleString('ja-JP')}超）`, kpiDisp(t[name]),
-        `売上÷延べ来院。あと ¥${Math.max(0, goal - v).toLocaleString('ja-JP')}。上げ方＝オプション・回数券・サブスクの「一言提案」（宣言→実行の答え合わせは下の表）`));
+        `あと ¥${Math.max(0, goal - v).toLocaleString('ja-JP')}。打ち手＝オプ・回数券・サブの一言提案`));
     }
   }
   if (name === '塩浜') {
@@ -1318,14 +1318,14 @@ function focusKpiHtml(name) {
       const v1 = num(f1[name]);
       const b1 = v1 >= goal ? 'green' : (v1 >= goal * 0.75 ? 'yellow' : 'red');
       cards.push(cardHtml(b1, `新再診の通院頻度（目標 月${goal}回）`, kpiDisp(f1[name]),
-        '当月に初診・再診で来た方の平均来院回数。初回の壁を越える＝次回予約クロージングと通院計画の提示が打ち手'));
+        '打ち手＝次回予約のクロージングと通院計画の提示'));
     }
     const f2 = flowMetric('通院頻度(全患者)');
     if (f2 && String(f2[name] || '').trim() !== '' && f2[name] !== '—') {
       const v2 = num(f2[name]);
       const b2 = v2 >= 4.6 ? 'green' : (v2 >= 4.0 ? 'yellow' : 'red');
       cards.push(cardHtml(b2, '通院頻度（全患者）', kpiDisp(f2[name]),
-        '参考 4.6回/人（南砂水準）。南砂との売上差の約8割はこの差'));
+        '参考＝南砂 4.6回/人'));
     }
   }
   if (!cards.length) return '';
@@ -1353,7 +1353,7 @@ function clinicChartHtml(name) {
   return `
     <div class="kpi-block">
       <h3 class="kpi-h">ペースチャート<span class="kpi-tag live">LIVE</span></h3>
-      <p class="section-desc" style="margin:0 0 10px;">縦軸100%＝月予算 ${yenFmt(p.budget)}。点線の対角線＝予算ペース、色の点線＝現ペースの着地予測。</p>
+      <p class="section-desc" style="margin:0 0 10px;">100%＝月予算 ${yenFmt(p.budget)}。色の点線＝着地予測。</p>
       <div class="pace-chart-wrap">${svg}</div>
     </div>`;
 }
@@ -1445,7 +1445,7 @@ function clinicPersonalHtml(name) {
   return `
     <div class="kpi-block">
       <h3 class="kpi-h">個人のマイルストーン（この院）<span class="kpi-tag live">LIVE</span></h3>
-      <p class="section-desc" style="margin:0 0 10px;">30万刻みで一段ずつ。色分け＝現ペースの着地で「次のマイルストーン」に届くか（🟢届く / 🟡あと少し / 🔴要ペースアップ）。過去の自分（昨年同月・自己ベスト）とも比べます。</p>
+      <p class="section-desc" style="margin:0 0 10px;">色＝現ペースで次の段に届くか（🟢届く/🟡あと少し/🔴要ペースアップ）。</p>
       <div class="kpi-cards ms-cards">${cards.join('')}</div>
     </div>`;
 }
@@ -1502,16 +1502,16 @@ function renderClinicPages() {
     el.innerHTML = hero + focusKpiHtml(name) + declVsActHtml(name) + forecastHtml(name) + clinicChartHtml(name) + `
       <div class="kpi-block">
         <h3 class="kpi-h">日次達成（毎日の予算達成）<span class="kpi-tag live">LIVE</span></h3>
-        <p class="section-desc" style="margin:0 0 10px;">当日院売上 ÷ 日割予算。🟢100%以上 / 🟡80-99% / 🔴79%以下。空欄＝休診/未到来。</p>
+        <p class="section-desc" style="margin:0 0 10px;">当日売上÷日割予算。🟢100〜/🟡80〜99/🔴〜79。空欄＝休診/未到来。</p>
         <div class="daily-row">${dailyStripHtml(name) || '<div class="kpi-note">日次データなし</div>'}</div>
       </div>` + clinicPersonalHtml(name) + `
       <div class="kpi-block">
         <h3 class="kpi-h">月次指標<span class="kpi-tag live">LIVE</span></h3>
         <div class="kpi-cards">
-          ${card(acuBand, '鍼灸受診率（施術ベース）', acu ? kpiDisp(acu[name]) : '—', '鍼✔・灸✔ベース／目標60%以上')}
+          ${card(acuBand, '鍼灸受診率（施術ベース）', acu ? kpiDisp(acu[name]) : '—', '目標60%')}
           ${card(chBand, '離反率', churn ? kpiDisp(churn[name]) : '—', '目標8%以下')}
-          ${card(chBand, '1ヶ月離反数', c1 ? kpiDisp(c1[name]) : '—', '離反の健全度に連動')}
-          ${card(chBand, '2ヶ月離反数', c2 ? kpiDisp(c2[name]) : '—', '離反の健全度に連動')}
+          ${card(chBand, '1ヶ月離反数', c1 ? kpiDisp(c1[name]) : '—', '')}
+          ${card(chBand, '2ヶ月離反数', c2 ? kpiDisp(c2[name]) : '—', '')}
         </div>
       </div>` + rihanListHtml(name);
   });
@@ -2038,7 +2038,7 @@ function declVsActHtml(name) {
   return `
     <div class="kpi-block">
       <h3 class="kpi-h">今日のアクション（宣言 vs 実行）<span class="kpi-tag live">LIVE</span></h3>
-      <p class="section-desc" style="margin:0 0 10px;">朝の仕込みで宣言した数と、行動ログに入れた実行数の毎日の答え合わせ。月の目標は1人あたり 転換${G.tenkan}件・LINE${G.line}件・ロープレ${G.rope}日・鍛錬${G.tanren}日（出勤日は毎日）。</p>
+      <p class="section-desc" style="margin:0 0 10px;">宣言（朝の仕込み）× 実行（行動ログ）。目標/月＝転換${G.tenkan}・LINE${G.line}・ロープレ${G.rope}・鍛錬${G.tanren}（1人）。</p>
       ${note}
       <div class="flow-table-wrap"><table class="flow-table">
         <thead><tr><th>施術者</th><th>今日の宣言</th><th>昨日（宣言 → 実行）</th><th>当月実行 / 目標</th></tr></thead>
@@ -2139,6 +2139,6 @@ function renderPersonalRanking() {
     </tr>`;
   });
   html += `</tbody></table></div>
-    <p class="section-desc" style="margin-top:12px;">※マイルストーン＝30万刻み→120万（損益分岐）→150万（余剰30万）。色分け＝現ペースの着地で次のマイルストーンに届くか（🟢届く / 🟡あと少し / 🔴要ペースアップ）。単価＝個人売上÷のべ担当／全患者数＝主担当ベースの実人数／通院頻度＝のべ担当÷実人数。自己ベスト＝過去アーカイブ（2024-01〜2026-07）の最高月。昇給は個人120万達成＋チーム(院)予算達成が条件。有山さん(管理部)は施術者集計の対象外です。</p>`;
+    <p class="section-desc" style="margin-top:12px;">※色＝現ペースで次のマイルストーンに届くか。昇給＝個人120万＋院予算達成。</p>`;
   el.innerHTML = html;
 }
