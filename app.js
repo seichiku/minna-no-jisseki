@@ -1765,25 +1765,20 @@ function renderKpiLeading() {
   const st = actStats();
   let html;
   if (st) {
+    // 全社目標＝1人あたり月目標 × 施術者数（2026-08-27 竹中決定: 転換50/LINE50/ロープレ22/鍛錬22 per 人）
+    const G = CONFIG.ACTIONS.GOALS_PP || { tenkan: 50, line: 50, rope: 22, tanren: 22 };
+    const N = (CONFIG.KPI.STAFF || []).length || 6;
     const tenkan = st.total.opt + st.total.order + st.total.sub;
-    const gRow = tRow('転換 提案数');
-    const gRaw = gRow ? String(gRow[5] == null ? '' : gRow[5]).trim() : '';
-    const goal = gRaw && gRaw !== '—' ? gRaw : String(CONFIG.ACTIONS.GOAL_TENKAN);
-    html = `<div class="kpi-card">
-        <div class="kpi-card-label">転換 提案数（全社・今月）</div>
-        <div class="kpi-card-big">${tenkan}<span class="kpi-card-unit"> / 目標 ${goal}</span></div>
-        <div class="kpi-card-sub">オプション ${st.total.opt}・オーダー ${st.total.order}・サブスク ${st.total.sub}<span class="kpi-tag live">LIVE</span></div>
+    const card = (label, val, goal, sub) => `<div class="kpi-card">
+        <div class="kpi-card-label">${label}</div>
+        <div class="kpi-card-big">${val}<span class="kpi-card-unit"> / 目標 ${goal}</span></div>
+        <div class="kpi-card-sub">${sub}<span class="kpi-tag live">LIVE</span></div>
       </div>`;
-    html += `<div class="kpi-card">
-        <div class="kpi-card-label">LINE 発信数（全社・今月）</div>
-        <div class="kpi-card-big">${st.total.line}</div>
-        <div class="kpi-card-sub"><span class="kpi-tag live">LIVE</span></div>
-      </div>`;
-    html += `<div class="kpi-card">
-        <div class="kpi-card-label">ロープレ 実施数（全社・今月）</div>
-        <div class="kpi-card-big">${st.total.rope}<span class="kpi-card-unit"> / 毎週</span></div>
-        <div class="kpi-card-sub"><span class="kpi-tag live">LIVE</span></div>
-      </div>`;
+    html = card('転換 提案数（全社・今月）', tenkan, `${G.tenkan * N}（${G.tenkan}件/人）`,
+      `オプション ${st.total.opt}・オーダー ${st.total.order}・サブスク ${st.total.sub} `);
+    html += card('LINE 発信数（全社・今月）', st.total.line, `${G.line * N}（${G.line}件/人）`, '');
+    html += card('ロープレ 実施数（全社・今月）', st.total.rope, `${G.rope * N}（出勤日は毎日）`, '');
+    html += card('鍛錬 実施数（全社・今月）', st.total.tanren, `${G.tanren * N}（出勤日は毎日）`, '');
   } else {
     html = tacticCard('転換 提案数（全社・今月）', '転換 提案数');
     html += tacticCard('LINE 発信数（全社・今月）', 'LINE 発信数');
@@ -1862,9 +1857,10 @@ function actCatKey(cat) {
   if (c.includes('サブスク') || c.includes('筋トレ')) return 'sub';
   if (c.includes('LINE')) return 'line';
   if (c.includes('ロープレ')) return 'rope';
+  if (c.includes('鍛錬')) return 'tanren';
   return null;
 }
-function actZero() { return { opt: 0, order: 0, sub: 0, line: 0, rope: 0 }; }
+function actZero() { return { opt: 0, order: 0, sub: 0, line: 0, rope: 0, tanren: 0 }; }
 
 // 行動ログの当月分を集計 → { total, byClinic, byStaff: {姓: {month, byDate}} }（ログ未取得なら null）
 let __actStatsCache;
@@ -1901,7 +1897,26 @@ function actStats() {
   return (__actStatsCache = out);
 }
 
-// 朝の仕込みの【宣言】列（ヘッダー文字列で動的検出）→ { '姓|yyyy-mm-dd': {opt,order,sub} }
+// 転換宣言のフリーテキスト（例:「オプション3件・サブスク1件」）を数に分解する。
+// 種別キーワードが見つからなければ、文中の数字の合計を宣言数として扱う。
+function parseTenkanDecl(s) {
+  let t = String(s == null ? '' : s).trim();
+  if (t === '') return null;
+  t = t.replace(/[０-９]/g, d => '０１２３４５６７８９'.indexOf(d));   // 全角数字→半角
+  const num = re => { const m = t.match(re); return m ? parseInt(m[1], 10) || 0 : 0; };
+  const opt = num(/オプ[^0-9]{0,6}([0-9]+)/);
+  const order = num(/オーダー[^0-9]{0,6}([0-9]+)/) + num(/回数券[^0-9]{0,6}([0-9]+)/);
+  const sub = num(/サブ[^0-9]{0,6}([0-9]+)/) + num(/筋トレ[^0-9]{0,6}([0-9]+)/);
+  let total = opt + order + sub;
+  if (!total) {
+    const all = t.match(/[0-9]+/g);
+    total = all ? all.reduce((a, b) => a + parseInt(b, 10), 0) : 0;
+  }
+  return { text: t, total, opt, order, sub };
+}
+
+// 朝の仕込みの【宣言】列（ヘッダー文字列で動的検出）→ { '姓|yyyy-mm-dd': {tenkan,rope,tanren} }
+// tenkan=転換のフリーテキスト宣言（parseTenkanDecl済み）／rope・tanren=「やる」宣言（true/false/null）。
 // フォームの担当者はフルネーム（例: 植田祐司）なので姓に正規化して突合する。
 let __asaDeclsCache;
 function asaDecls() {
@@ -1912,11 +1927,11 @@ function asaDecls() {
   for (let c = 0; c < head.length; c++) {
     const h = String(head[c] || '');
     if (h.indexOf('【宣言】') !== 0) continue;
-    if (h.includes('オプション')) cols.opt = c;
-    else if (h.includes('オーダー')) cols.order = c;
-    else if (h.includes('サブスク')) cols.sub = c;
+    if (h.includes('転換')) cols.tenkan = c;          // 統合宣言（例文にオプション等を含むため最優先で判定）
+    else if (h.includes('ロープレ')) cols.rope = c;
+    else if (h.includes('鍛錬')) cols.tanren = c;
   }
-  if (cols.opt == null && cols.order == null && cols.sub == null) return (__asaDeclsCache = null);
+  if (cols.tenkan == null && cols.rope == null && cols.tanren == null) return (__asaDeclsCache = null);
   const A = CONFIG.ACTIONS.ASA_COL;
   const names = (CONFIG.KPI.STAFF || []).concat(['有山', '竹中', '羽田']);
   const surname = full => {
@@ -1924,18 +1939,22 @@ function asaDecls() {
     for (const s of names) { if (f.indexOf(s) === 0) return s; }
     return f;
   };
+  const yesNo = v => {
+    const t = String(v == null ? '' : v).trim();
+    if (t === '') return null;
+    return t.includes('やる');
+  };
   const byKey = {};
   for (let i = 1; i < kpiAsa.length; i++) {
     const r = kpiAsa[i] || [];
     const d = parseVisitDate(r[A.date]);
     if (!d) continue;
     const key = surname(r[A.staff]) + '|' + dateKeyOf(d);
-    const rec = byKey[key] || (byKey[key] = { opt: null, order: null, sub: null });
-    ['opt', 'order', 'sub'].forEach(k => {
-      if (cols[k] == null) return;
-      const v = String(r[cols[k]] == null ? '' : r[cols[k]]).trim();
-      if (v !== '') rec[k] = kpiNum(v);   // 同日に複数回答があれば後勝ち
-    });
+    const rec = byKey[key] || (byKey[key] = { tenkan: null, rope: null, tanren: null });
+    // 同日に複数回答があれば後勝ち
+    if (cols.tenkan != null) { const p = parseTenkanDecl(r[cols.tenkan]); if (p) rec.tenkan = p; }
+    if (cols.rope != null) { const y = yesNo(r[cols.rope]); if (y != null) rec.rope = y; }
+    if (cols.tanren != null) { const y = yesNo(r[cols.tanren]); if (y != null) rec.tanren = y; }
   }
   return (__asaDeclsCache = byKey);
 }
@@ -1961,6 +1980,7 @@ function clinicStaffList(name) {
 }
 
 // 各院ページ「今日のアクション（宣言 vs 実行）」ブロック
+// 宣言＝朝の仕込み（転換のフリーテキスト＋ロープレ/鍛錬のやる宣言）、実行＝行動ログ。
 function declVsActHtml(name) {
   const staffList = clinicStaffList(name);
   if (!staffList.length) return '';
@@ -1968,9 +1988,14 @@ function declVsActHtml(name) {
   const decls = asaDecls();
   const tKey = dayKey(0), yKey = dayKey(-1);
   const A = CONFIG.ACTIONS;
-  const sum3 = o => o ? (o.opt || 0) + (o.order || 0) + (o.sub || 0) : 0;
-  const hasDecl = o => !!(o && (o.opt != null || o.order != null || o.sub != null));
-  const detail = o => o ? `オプ${o.opt || 0}・オーダー${o.order || 0}・サブ${o.sub || 0}` : '';
+  const G = A.GOALS_PP || { tenkan: 50, line: 50, rope: 22, tanren: 22 };
+  const tenkanOf = o => o ? (o.opt || 0) + (o.order || 0) + (o.sub || 0) : 0;
+  // ロープレ/鍛錬の「宣言→実行」ミニチップ（宣言していない日は出さない）
+  const miniChip = (label, declared, done) => {
+    if (declared == null) return '';
+    if (!declared) return `<span class="dv-detail">${label}—</span>`;
+    return `<span class="dv-detail">${label}${done ? '🟢' : '🔴'}</span>`;
+  };
   let rows = '';
   staffList.forEach(s => {
     const d0 = decls ? decls[s + '|' + tKey] : null;
@@ -1978,11 +2003,20 @@ function declVsActHtml(name) {
     const staffStat = st ? st.byStaff[s] : null;
     const a1 = staffStat ? staffStat.byDate[yKey] : null;
     const m = staffStat ? staffStat.month : null;
-    const today = hasDecl(d0)
-      ? `<b>${sum3(d0)}件</b> <span class="dv-detail">${detail(d0)}</span>`
-      : '<span class="dv-none">未宣言</span>';
-    const yDecl = hasDecl(d1) ? sum3(d1) : null;
-    const yAct = sum3(a1);
+    // 今日の宣言
+    let today;
+    if (d0 && (d0.tenkan || d0.rope != null || d0.tanren != null)) {
+      const parts = [];
+      if (d0.tenkan) parts.push(`転換 <b>${d0.tenkan.total}件</b> <span class="dv-detail">${escHtml(d0.tenkan.text)}</span>`);
+      if (d0.rope != null) parts.push(`<span class="dv-detail">ロープレ${d0.rope ? '🔥' : '—'}</span>`);
+      if (d0.tanren != null) parts.push(`<span class="dv-detail">鍛錬${d0.tanren ? '🔥' : '—'}</span>`);
+      today = parts.join(' ');
+    } else {
+      today = '<span class="dv-none">未宣言</span>';
+    }
+    // 昨日の宣言 vs 実行（主役は転換。ロープレ/鍛錬はチップで）
+    const yDecl = d1 && d1.tenkan ? d1.tenkan.total : null;
+    const yAct = tenkanOf(a1);
     let yCell;
     if (yDecl == null && !yAct) {
       yCell = '<span class="dv-muted">—</span>';
@@ -1992,8 +2026,11 @@ function declVsActHtml(name) {
       const sig = yAct >= yDecl ? ((yDecl > 0 || yAct > 0) ? '🟢' : '') : (yAct > 0 ? '🟡' : '🔴');
       yCell = `宣言 ${yDecl} → 実行 <b>${yAct}件</b> ${sig}`;
     }
+    yCell += ' ' + miniChip('ロ', d1 ? d1.rope : null, !!(a1 && a1.rope))
+      + ' ' + miniChip('鍛', d1 ? d1.tanren : null, !!(a1 && a1.tanren));
+    // 当月実行（1人あたり目標つき）
     const month = m
-      ? `転換 ${m.opt + m.order + m.sub}・LINE ${m.line}`
+      ? `転換 ${m.opt + m.order + m.sub}/${G.tenkan}・LINE ${m.line}/${G.line}<br><span class="dv-detail">ロープレ ${m.rope}/${G.rope}・鍛錬 ${m.tanren}/${G.tanren}</span>`
       : '<span class="dv-muted">0</span>';
     rows += `<tr><td class="ft-label">${escHtml(s)}</td><td>${today}</td><td>${yCell}</td><td>${month}</td></tr>`;
   });
@@ -2001,14 +2038,14 @@ function declVsActHtml(name) {
   return `
     <div class="kpi-block">
       <h3 class="kpi-h">今日のアクション（宣言 vs 実行）<span class="kpi-tag live">LIVE</span></h3>
-      <p class="section-desc" style="margin:0 0 10px;">朝の仕込みで宣言した提案数と、行動ログに入れた実行数の毎日の答え合わせ。提案は成約の前段＝この数が増えれば売上がついてきます。</p>
+      <p class="section-desc" style="margin:0 0 10px;">朝の仕込みで宣言した数と、行動ログに入れた実行数の毎日の答え合わせ。月の目標は1人あたり 転換${G.tenkan}件・LINE${G.line}件・ロープレ${G.rope}日・鍛錬${G.tanren}日（出勤日は毎日）。</p>
       ${note}
       <div class="flow-table-wrap"><table class="flow-table">
-        <thead><tr><th>施術者</th><th>今日の宣言</th><th>昨日（宣言 → 実行）</th><th>当月実行</th></tr></thead>
+        <thead><tr><th>施術者</th><th>今日の宣言</th><th>昨日（宣言 → 実行）</th><th>当月実行 / 目標</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
       <div class="dv-actions">
-        <a class="dv-btn" href="${A.FORM_URL}" target="_blank" rel="noopener">☀️ 朝の仕込み（今日の宣言を入力）</a>
+        <a class="dv-btn" href="${A.FORM_URL}" target="_blank" rel="noopener">☀️ 朝の仕込み（振り返りと宣言）</a>
         <a class="dv-btn ghost" href="${A.LOG_URL}" target="_blank" rel="noopener">✍️ 行動ログ（実行を入力）</a>
       </div>
     </div>`;

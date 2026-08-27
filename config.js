@@ -157,6 +157,13 @@ const CONFIG = {
     FORM_URL: 'https://docs.google.com/forms/d/e/1FAIpQLScNDzV3os7TQpv2ynbrQQuHZZZLerm3RF6ykZpuELBU4FstWQ/viewform',
     LOG_URL: 'https://docs.google.com/spreadsheets/d/1Xwdlni7dCWkeFGu5NSvuwzTxMbCni5aR7Pdqm_zhFg8/edit',
     GOAL_TENKAN: 300,   // 転換提案 全社/月（戦術タブF列が取れない時のフォールバック）
+    // 1人あたり月目標（2026-08-27 竹中決定。スタッフは月8休み＝出勤22日）
+    GOALS_PP: {
+      tenkan: 50,   // 転換提案（オプション＋オーダー＋サブスク）
+      line: 50,     // 公式LINE発信
+      rope: 22,     // ロープレ＝出勤日数
+      tanren: 22,   // 鍛錬＝出勤日数
+    },
   },
 
   // 今月の院テーマ（2026-08-27 竹中指示）
