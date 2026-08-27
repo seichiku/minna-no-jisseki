@@ -113,6 +113,14 @@ function doPost(e) {
       }
       try {
         var ss = cache[id] || (cache[id] = SpreadsheetApp.openById(id));
+        // 行動ログは2026-08-27夜から月×院別タブ（例:「南砂 8月」）。
+        // キーは従来どおり "TAC_ID|行動ログ" のまま、当月3タブを統合スキーマで返す。
+        if (id === TAC_ID && name === '行動ログ') {
+          var gridT = readTacticsMerged_(ss);
+          sheets[key] = gridT;
+          try { cacheSvc.put(ck, JSON.stringify(gridT), CACHE_TTL_SEC); } catch (ignoreT) {}
+          continue;
+        }
         var sh = ss.getSheetByName(name);
         // 「フロー（3院）」は2026-08-17からタブ名に月が付く（例: フロー（3院）2026年8月）。
         // キーは従来どおり "ID|フロー（3院）" のまま、プレフィックス一致で実タブを解決する。
@@ -125,8 +133,6 @@ function doPost(e) {
         var grid = sh ? sh.getDataRange().getDisplayValues() : [];
         // 顧客マスタは離客リストに使う3列（B=氏名/E=院/K=最終来院日）だけ返す（列位置は維持）
         if (id === MASTER_ID) grid = slimMaster_(grid);
-        // 行動ログは空行（数式だけの行）を落として入力済み行だけ返す
-        if (id === TAC_ID) grid = slimTac_(grid);
         // 朝の仕込みはメールアドレス等を落とし、日付/担当者/役割/【宣言】列だけ返す
         if (id === ASA_ID) grid = slimAsa_(grid);
         sheets[key] = grid;
@@ -160,17 +166,33 @@ function slimMaster_(grid) {
   return out;
 }
 
-// 行動ログ（5000行の数式プリセット行が並ぶ）から、入力済み行＋ヘッダー2行だけを
-// A〜E列（日付/院/担当者/種別/件数）＋G列（カテゴリ自動）に間引く（列位置は維持）
-function slimTac_(grid) {
-  var out = [];
-  for (var i = 0; i < grid.length; i++) {
-    var r = grid[i] || [];
-    if (i >= 2 && String(r[0] || '') === '') continue;   // 未入力行はスキップ
-    var row = [];
-    row[0] = r[0] || ''; row[1] = r[1] || ''; row[2] = r[2] || '';
-    row[3] = r[3] || ''; row[4] = r[4] || ''; row[6] = r[6] || '';
-    out.push(row);
+// 戦術ダッシュボードの当月・院別行動ログタブ（「南砂 8月」等）を統合し、
+// 従来の統一スキーマ（0=日付/1=院/2=担当者/3=種別/4=件数/6=カテゴリ）で返す。
+// 各タブは A日付 B担当者 C種別 D件数 Eメモ Fカテゴリ(自動) G実効件数(自動)。
+// 未入力行（数式プリセットだけの行）はスキップ。LP側の列マッピングは v2 から不変。
+function readTacticsMerged_(ss) {
+  var clinics = ['南砂', '塩浜', '東砂'];
+  var m = new Date().getMonth() + 1;
+  var out = [
+    ['行動ログ（当月・3院統合）'],
+    ['日付', '院', '担当者', '種別', '件数', '', 'カテゴリ(自動)']
+  ];
+  for (var c = 0; c < clinics.length; c++) {
+    var sh = ss.getSheetByName(clinics[c] + ' ' + m + '月');
+    if (!sh) continue;
+    var grid = sh.getDataRange().getDisplayValues();
+    for (var i = 2; i < grid.length; i++) {
+      var r = grid[i] || [];
+      if (String(r[0] || '') === '') continue;
+      var row = [];
+      row[0] = r[0] || '';        // 日付
+      row[1] = clinics[c];        // 院（タブ名から）
+      row[2] = r[1] || '';        // 担当者
+      row[3] = r[2] || '';        // 種別
+      row[4] = r[3] || '';        // 件数
+      row[6] = r[5] || '';        // カテゴリ(自動)
+      out.push(row);
+    }
   }
   return out;
 }
