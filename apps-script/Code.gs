@@ -246,7 +246,10 @@ var ACCESS_SUM_TAB = 'アクセス集計';
 function logAccess_(email, name, type, tab) {
   var ss = SpreadsheetApp.openById(ANALYSIS_ID);
   var sh = ss.getSheetByName(ACCESS_LOG_TAB);
-  if (!sh) sh = ss.insertSheet(ACCESS_LOG_TAB);
+  if (!sh) {
+    sh = ss.insertSheet(ACCESS_LOG_TAB, ss.getSheets().length);  // 末尾に作る
+    sh.hideSheet();  // 生ログは隠しタブ＝人が見るのは「アクセス集計」（誰が何件は人別表）2026-08-29 竹中要望
+  }
   // ヘッダー自己修復（初回作成が途中失敗しても次の呼び出しで直る 2026-08-25）
   if (String(sh.getRange(1, 1).getValue()) !== '日時') {
     if (sh.getLastRow() > 0) sh.insertRowBefore(1);
@@ -266,7 +269,7 @@ function ensureAccessSummary_(ss) {
   sh.getRange(1,1,1,9).merge().setValue('みんなの実績 アクセス集計（誰が・いつ・どこを見ているか）')
     .setBackground('#1f3864').setFontColor('#ffffff').setFontWeight('bold').setFontSize(14).setVerticalAlignment('middle');
   sh.setRowHeight(1,30);
-  sh.getRange(2,1,1,9).merge().setValue('▸ データ元: 「アクセスログ」タブ（ログイン=中継API・タブ閲覧=LPが自動送信）。計測開始 2026-08-26。リアルタイム反映。')
+  sh.getRange(2,1,1,9).merge().setValue('▸ データ元: 隠しタブ「アクセスログ」（ログイン=中継API・タブ閲覧=LPが自動送信）。計測開始 2026-08-26。リアルタイム反映。')
     .setFontColor('#7f7f7f').setFontSize(9).setWrap(true);
   sh.getRange(4,1).setValue('■ 人別 ログイン').setFontWeight('bold');
   sh.getRange(5,1).setFormula('=IFERROR(QUERY(アクセスログ!A:E,"select C, count(A), max(A) where D=\'login\' group by C order by count(A) desc label C \'氏名\', count(A) \'回数\', max(A) \'最終ログイン\'",1),"まだログがありません")');
