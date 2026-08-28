@@ -64,6 +64,15 @@ var SHEET_SPECS = [
   [ASA_ID,      '2026/8/28~'],          // 朝の仕込み＝今日の宣言（2026-08-27 質問改定で新シート化・日付入り名。質問改定ごとに紐づけ直し→ここを新タブ名に更新）
 ];
 
+// アクセス集計タブの手動作り直し（レイアウト変更後に実行）。
+// ファイル先頭の関数＝エディタが自動選択する（誤実行してもログから再集計するだけで安全）。
+function rebuildAccessSummary() {
+  var ss = SpreadsheetApp.openById(ANALYSIS_ID);
+  var sh = ss.getSheetByName(ACCESS_SUM_TAB);
+  if (sh) ss.deleteSheet(sh);
+  ensureAccessSummary_(ss);
+}
+
 function doPost(e) {
   try {
     var body = (e && e.postData && e.postData.contents ? e.postData.contents : '').trim();
@@ -246,24 +255,38 @@ function logAccess_(email, name, type, tab) {
   sh.appendRow([new Date(), email, name, type, tab]);
   try { ensureAccessSummary_(ss); } catch (e2) {}   // 集計タブも毎回チェック（存在すれば即return）
 }
+// 2026-08-28 レイアウト刷新（竹中要望「見づらい・余白が多い」対応）:
+//   3表を横並び（A:C 人別 / E:F タブ別 / H:I 日別）＋ 22行目〜 人別×タブのピボット表。
+//   日付列はQUERYのformat句で書式指定（旧版はシリアル値がそのまま見えていた）。
+//   氏名「テスト」= curl疎通テストの行は閲覧系の表から除外。
 function ensureAccessSummary_(ss) {
   if (ss.getSheetByName(ACCESS_SUM_TAB)) return;
-  var sh = ss.insertSheet(ACCESS_SUM_TAB);
+  var sh = ss.insertSheet(ACCESS_SUM_TAB, ss.getSheets().length);  // 末尾に作る（先頭側のタブ順を乱さない）
   sh.setHiddenGridlines(true);
-  sh.getRange(1,1,1,8).merge().setValue('みんなの実績 アクセス集計（誰が・いつ・どこを見ているか）')
+  sh.getRange(1,1,1,9).merge().setValue('みんなの実績 アクセス集計（誰が・いつ・どこを見ているか）')
     .setBackground('#1f3864').setFontColor('#ffffff').setFontWeight('bold').setFontSize(14).setVerticalAlignment('middle');
   sh.setRowHeight(1,30);
-  sh.getRange(2,1,1,8).merge().setValue('▸ データ元: 隠しタブ「アクセスログ」（ログイン=中継API・タブ閲覧=LPが自動送信）。計測開始 2026-08-26。リアルタイム反映。')
+  sh.getRange(2,1,1,9).merge().setValue('▸ データ元: 「アクセスログ」タブ（ログイン=中継API・タブ閲覧=LPが自動送信）。計測開始 2026-08-26。リアルタイム反映。')
     .setFontColor('#7f7f7f').setFontSize(9).setWrap(true);
-  sh.getRange(4,1).setValue('■ 人別（ログイン回数・最終ログイン）').setFontWeight('bold');
-  sh.getRange(5,1).setFormula('=IFERROR(QUERY(アクセスログ!A:E,"select C, B, count(A), max(A) where D=\'login\' group by C, B order by count(A) desc label C \'氏名\', B \'email\', count(A) \'ログイン回数\', max(A) \'最終ログイン\'",1),"まだログがありません")');
-  sh.getRange(4,7).setValue('■ タブ別 閲覧数').setFontWeight('bold');
-  sh.getRange(5,7).setFormula('=IFERROR(QUERY(アクセスログ!A:E,"select E, count(A) where D=\'tab\' group by E order by count(A) desc label E \'タブ\', count(A) \'閲覧数\'",1),"まだログがありません")');
-  sh.getRange(20,1).setValue('■ 日別ログイン数（直近14日）').setFontWeight('bold');
-  sh.getRange(21,1).setFormula('=IFERROR(QUERY(アクセスログ!A:E,"select toDate(A), count(B) where D=\'login\' group by toDate(A) order by toDate(A) desc limit 14 label toDate(A) \'日\', count(B) \'ログイン数\'",1),"まだログがありません")');
-  sh.getRange(20,4).setValue('■ 人別×タブ別 閲覧数').setFontWeight('bold');
-  sh.getRange(21,4).setFormula('=IFERROR(QUERY(アクセスログ!A:E,"select C, E, count(A) where D=\'tab\' group by C, E order by C, count(A) desc label C \'氏名\', E \'タブ\', count(A) \'閲覧数\'",1),"まだログがありません")');
-  sh.setColumnWidth(1,140); sh.setColumnWidth(2,220); sh.setColumnWidth(4,140);
+  sh.getRange(4,1).setValue('■ 人別 ログイン').setFontWeight('bold');
+  sh.getRange(5,1).setFormula('=IFERROR(QUERY(アクセスログ!A:E,"select C, count(A), max(A) where D=\'login\' group by C order by count(A) desc label C \'氏名\', count(A) \'回数\', max(A) \'最終ログイン\'",1),"まだログがありません")');
+  sh.getRange(4,5).setValue('■ タブ別 閲覧数').setFontWeight('bold');
+  sh.getRange(5,5).setFormula('=IFERROR(QUERY(アクセスログ!A:E,"select E, count(A) where D=\'tab\' and C != \'テスト\' group by E order by count(A) desc label E \'タブ\', count(A) \'閲覧数\'",1),"まだログがありません")');
+  sh.getRange(4,8).setValue('■ 日別 ログイン数（直近14日）').setFontWeight('bold');
+  sh.getRange(5,8).setFormula('=IFERROR(QUERY(アクセスログ!A:E,"select toDate(A), count(B) where D=\'login\' group by toDate(A) order by toDate(A) desc limit 14 label toDate(A) \'日\', count(B) \'ログイン数\'",1),"まだログがありません")');
+  sh.getRange(22,1).setValue('■ 人別 × タブ別 閲覧数（行=氏名・列=タブ）').setFontWeight('bold');
+  sh.getRange(23,1).setFormula('=IFERROR(QUERY(アクセスログ!A:E,"select C, count(A) where D=\'tab\' and C != \'テスト\' group by C pivot E label C \'氏名\'",1),"まだログがありません")');
+  // 日付列の書式（QUERYのformat句はセル書式に反映されないため setNumberFormat で確実に指定）
+  // ※22行目からのピボット表に食い込まないよう20行目まで（食い込むと件数が日付表示になる）
+  sh.getRange(6,3,15,1).setNumberFormat('MM/dd HH:mm');   // 最終ログイン
+  sh.getRange(6,8,15,1).setNumberFormat('MM/dd');          // 日別の日付
+  // ヘッダー行（QUERYの1行目が入る位置）の見た目と列幅（ほぼ均一グリッド＝下段ピボットも同じ列で崩れない）
+  sh.getRange(5,1,1,3).setFontWeight('bold').setBackground('#d9e1f2');
+  sh.getRange(5,5,1,2).setFontWeight('bold').setBackground('#d9e1f2');
+  sh.getRange(5,8,1,2).setFontWeight('bold').setBackground('#d9e1f2');
+  sh.getRange(23,1,1,12).setFontWeight('bold').setBackground('#d9e1f2');
+  var w=[130,90,110,110,140,90,90,90,90,100,100,100];
+  for (var i=0;i<w.length;i++) sh.setColumnWidth(i+1,w[i]);
 }
 
 // 動作確認用（ブラウザで /exec を開いたときの応答）
