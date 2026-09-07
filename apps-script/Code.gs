@@ -135,32 +135,38 @@ function readBundle_(forceRefresh) {
         continue;
       }
     }
-    try {
-      var ss = cache[id] || (cache[id] = SpreadsheetApp.openById(id));
-      var grid;
-      if (id === TAC_ID && name === '行動ログ') {
-        // 行動ログは月×院別タブ（例:「南砂 8月」）。キーは従来どおり
-        // "TAC_ID|行動ログ" のまま、当月3タブを統合スキーマで返す。
-        grid = readTacticsMerged_(ss);
-      } else {
-        var sh = ss.getSheetByName(name);
-        // 「フロー（3院）」はタブ名に月が付く（例: フロー（3院）2026年8月）→プレフィックス一致で解決
-        if (!sh && name === 'フロー（3院）') {
-          var pool = ss.getSheets();
-          for (var j = 0; j < pool.length; j++) {
-            if (pool[j].getName().indexOf(name) === 0) { sh = pool[j]; break; }
+    // Sheetsサービスの一時障害（"Service Spreadsheets failed while accessing document" が
+    // 2026-08-29・09-04 に各1回）対策: 1.5秒待って1回だけ読み直す。それでも失敗なら null。
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        var ss = cache[id] || (cache[id] = SpreadsheetApp.openById(id));
+        var grid;
+        if (id === TAC_ID && name === '行動ログ') {
+          // 行動ログは月×院別タブ（例:「南砂 8月」）。キーは従来どおり
+          // "TAC_ID|行動ログ" のまま、当月3タブを統合スキーマで返す。
+          grid = readTacticsMerged_(ss);
+        } else {
+          var sh = ss.getSheetByName(name);
+          // 「フロー（3院）」はタブ名に月が付く（例: フロー（3院）2026年8月）→プレフィックス一致で解決
+          if (!sh && name === 'フロー（3院）') {
+            var pool = ss.getSheets();
+            for (var j = 0; j < pool.length; j++) {
+              if (pool[j].getName().indexOf(name) === 0) { sh = pool[j]; break; }
+            }
           }
+          grid = sh ? sh.getDataRange().getDisplayValues() : [];
+          // 顧客マスタは離客リストに使う3列（B=氏名/E=院/K=最終来院日）だけ返す（列位置は維持）
+          if (id === MASTER_ID) grid = slimMaster_(grid);
+          // 朝の仕込みはメールアドレス等を落とし、日付/担当者/役割/【宣言】列だけ返す
+          if (id === ASA_ID) grid = slimAsa_(grid);
         }
-        grid = sh ? sh.getDataRange().getDisplayValues() : [];
-        // 顧客マスタは離客リストに使う3列（B=氏名/E=院/K=最終来院日）だけ返す（列位置は維持）
-        if (id === MASTER_ID) grid = slimMaster_(grid);
-        // 朝の仕込みはメールアドレス等を落とし、日付/担当者/役割/【宣言】列だけ返す
-        if (id === ASA_ID) grid = slimAsa_(grid);
+        sheets[key] = grid;
+        try { cacheSvc.put(ck, JSON.stringify(grid), CACHE_TTL_SEC); } catch (ignore) {}
+        break;
+      } catch (err) {
+        sheets[key] = null; // アクセス不可（共有未設定）。エラーはキャッシュしない
+        if (attempt === 0) { delete cache[id]; Utilities.sleep(1500); }
       }
-      sheets[key] = grid;
-      try { cacheSvc.put(ck, JSON.stringify(grid), CACHE_TTL_SEC); } catch (ignore) {}
-    } catch (err) {
-      sheets[key] = null; // アクセス不可（共有未設定）。エラーはキャッシュしない
     }
   }
   return sheets;
@@ -168,8 +174,15 @@ function readBundle_(forceRefresh) {
 
 // 5分おきの時間トリガーで実行（トリガーはGASエディタのUIから作成済み）。
 // キャッシュを常に温めておくことで、誰がいつ開いてもキャッシュ命中（1〜3秒）で返す。
+// readBundle_ の try/catch をすり抜ける Sheets 障害もあったため、関数全体を3秒後に1回だけやり直す
+// （次の5分トリガーでも回復するので、2回目も失敗したときだけ失敗通知が届く）。
 function warmCache() {
-  readBundle_(true);
+  try {
+    readBundle_(true);
+  } catch (e) {
+    Utilities.sleep(3000);
+    readBundle_(true);
+  }
 }
 
 // 顧客マスタを離客リスト用の3列（B=1/E=4/K=10）だけの疎な行に間引く（クライアントの列番号は不変）
