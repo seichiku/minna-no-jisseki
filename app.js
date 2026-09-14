@@ -4,6 +4,19 @@
 // ============================================================
 
 let __bundle = null;    // 中継APIから取得したシート束 { "<id>|<name>": [[...]] }
+let __readAt = {};      // 中継APIが各シートを実際に読んだ時刻(ms) { "<id>|<name>": 1726...  }（2026-09-14）
+
+// ヒーローの「データ取得 HH:MM」＝束の中で一番古い取得時刻（中継APIは5分おきに温め直す）
+function renderDataFresh() {
+  const el = document.getElementById('dataFresh');
+  if (!el) return;
+  const ts = Object.values(__readAt || {}).map(Number).filter(n => n > 0);
+  if (!ts.length) { el.textContent = ''; return; }
+  const oldest = new Date(Math.min.apply(null, ts));
+  const hh = String(oldest.getHours()).padStart(2, '0'), mm = String(oldest.getMinutes()).padStart(2, '0');
+  const md = (oldest.getMonth() + 1) + '/' + oldest.getDate();
+  el.textContent = `📡 データ取得 ${md} ${hh}:${mm}（各シートから5分おきに自動取得）`;
+}
 let caseRecords = [];   // 患者単位（1日報3患者を展開）
 let dailyRecords = [];  // 日報単位（喜びの声・症状カテゴリ集計用）
 let thanksData = [];
@@ -149,6 +162,8 @@ async function loadAllData(credential) {
     }
 
     __bundle = data.sheets || {};
+    __readAt = data.readAt || {};
+    renderDataFresh();   // データ取得時刻（信頼性の可視化 2026-09-14）
 
     // 2026-08-28: loadCaseData（旧日報）は廃止＝中継APIから旧日報3シートを外し高速化
     await Promise.all([loadKpiData(), loadPersonalRanking()]);
@@ -1601,6 +1616,13 @@ function renderKpiStock() {
   const mrr = totalRow ? kpiDisp(totalRow[2]) : '—';
   const remain = Math.max(0, goal - enrolled);
   const pct = Math.min(100, Math.round(enrolled / goal * 100));
+  // 院別の月目標：CONFIG.KPI.SUB_TARGETS の当月キー。無ければ直近の月を使い、その月名を表示（2026-09-14 ハードコード廃止）
+  const tgMap = CONFIG.KPI.SUB_TARGETS || {};
+  const ymNow = ymKey(0);
+  const tgKey = tgMap[ymNow] ? ymNow : Object.keys(tgMap).filter(k => k <= ymNow).sort().pop();
+  const targets = (tgKey && tgMap[tgKey]) || {};
+  const tgLabel = tgKey ? `${parseInt(tgKey.slice(5), 10)}月目標` : '目標';
+  const tgSum = Object.values(targets).reduce((a, b) => a + (Number(b) || 0), 0);
 
   meter.innerHTML = `
     <div class="kpi-meter-head">
@@ -1609,10 +1631,9 @@ function renderKpiStock() {
       <span class="kpi-meter-mrr">MRR ${mrr}</span>
     </div>
     <div class="kpi-bar big"><div class="kpi-bar-fill live" style="width:${pct}%"></div></div>
-    <div class="kpi-meter-foot">あと <b>${remain}</b> 名　｜　9月目標 南砂30 / 塩浜20 / 東砂9 ＝計59</div>`;
+    <div class="kpi-meter-foot">あと <b>${remain}</b> 名　｜　${tgLabel} 南砂${targets['南砂'] || '—'} / 塩浜${targets['塩浜'] || '—'} / 東砂${targets['東砂'] || '—'} ＝計${tgSum}</div>`;
 
-  // 院別 在籍 + MRR（9月目標つき）
-  const targets = { '南砂': 30, '塩浜': 20, '東砂': 9 };
+  // 院別 在籍 + MRR（当月目標つき）
   clinicEl.innerHTML = CONFIG.KPI.CLINICS.map(c => {
     const row = kpiFindRow(kpiMember, c);
     const n = row ? kpiNum(row[1]) : 0;
@@ -1624,7 +1645,7 @@ function renderKpiStock() {
         <div class="kpi-card-label">${c}院</div>
         <div class="kpi-card-big">${n}<span class="kpi-card-unit">名</span></div>
         <div class="kpi-bar"><div class="kpi-bar-fill live" style="width:${cp}%"></div></div>
-        <div class="kpi-card-sub">9月目標 ${tgt}名 ｜ MRR ${cmrr}</div>
+        <div class="kpi-card-sub">${tgLabel} ${tgt}名 ｜ MRR ${cmrr}</div>
       </div>`;
   }).join('');
 }
@@ -1756,7 +1777,7 @@ function renderKpiLeading() {
     return `<div class="kpi-card">
         <div class="kpi-card-label">${title}</div>
         <div class="kpi-card-big muted">—</div>
-        <div class="kpi-card-sub"><span class="kpi-tag wait">戦術ダッシュボード連携待ち</span></div>
+        <div class="kpi-card-sub"><span class="kpi-tag wait">戦術記録の読込待ち</span></div>
       </div>`;
   }
 
@@ -1779,6 +1800,7 @@ function renderKpiLeading() {
     html += card('LINE 発信数（全社・今月）', st.total.line, `${G.line * N}（${G.line}件/人）`, '');
     html += card('ロープレ 実施数（全社・今月）', st.total.rope, `${G.rope * N}（出勤日は毎日）`, '');
     html += card('鍛錬 実施数（全社・今月）', st.total.tanren, `${G.tanren * N}（出勤日は毎日）`, '');
+    html += actSourceNote();   // 出どころ（育成シート「戦術記録」・読めた人/読めなかった人）
   } else {
     html = tacticCard('転換 提案数（全社・今月）', '転換 提案数');
     html += tacticCard('LINE 発信数（全社・今月）', 'LINE 発信数');
@@ -1793,26 +1815,43 @@ function renderKpiLeading() {
 function kuchikomiStats() {
   if (!kpiKuchikomi) return null;
   // ヘッダー行（「クチコミ累計」を含む行）を探す
-  let hi = -1, ci = -1, si = -1, ei = -1;
+  let hi = -1, ci = -1, si = -1, ei = -1, wi = -1;
   for (let i = 0; i < kpiKuchikomi.length; i++) {
     const r = kpiKuchikomi[i] || [];
     const j = r.findIndex(x => String(x).trim() === 'クチコミ累計');
-    if (j >= 0) { hi = i; ci = j; si = r.findIndex(x => String(x).trim() === '店舗'); ei = r.findIndex(x => String(x).trim() === '評価'); break; }
+    if (j >= 0) {
+      hi = i; ci = j;
+      si = r.findIndex(x => String(x).trim() === '店舗');
+      ei = r.findIndex(x => String(x).trim() === '評価');
+      wi = r.findIndex(x => String(x).trim() === 'クチコミ週増分');
+      break;
+    }
   }
   if (hi < 0 || si < 0) return null;
+  // 週ラベル＝その週の月曜。週の最終日（月曜+6日）が当月1日より前なら「前月まで」の週。
+  // 当月件数＝最新週の累計 − 前月までの最後の週の累計（2026-09-14: 週ラベルの月で判定すると毎月前半が集計待ちになる）
   const now = new Date();
-  const ym = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
-  const out = {};   // 院名（「院」なし）→ {cur, prev, rating}
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const out = {};   // 院名（「院」なし）→ {cur, prev, rating, week, weekDate}
   for (let i = hi + 1; i < kpiKuchikomi.length; i++) {
     const r = kpiKuchikomi[i] || [];
     const wk = String(r[0] || '').trim();
     const shop = String(r[si] || '').replace('院', '').trim();
     if (!wk || !shop) continue;
+    const d = parseVisitDate(wk);
+    if (!d) continue;
     const cum = parseInt(String(r[ci] == null ? '' : r[ci]).replace(/[^0-9]/g, ''), 10);
     if (isNaN(cum)) continue;   // 累計未記録の週（7月中旬以前）はスキップ
-    const o = out[shop] || (out[shop] = { cur: null, prev: null, rating: null });
-    if (wk.slice(0, 7) === ym) { o.cur = cum; if (ei >= 0) o.rating = String(r[ei] || '').trim(); }
-    else if (wk.slice(0, 7) < ym) { o.prev = cum; }   // 行は週昇順→最後に残るのが前月最終
+    const o = out[shop] || (out[shop] = { cur: null, prev: null, rating: null, week: null, weekDate: null });
+    const weekEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 6);
+    if (weekEnd < monthStart) {
+      o.prev = cum;   // 行は週昇順→最後に残るのが「前月までの最終週」
+    } else {
+      o.cur = cum;    // 当月に1日でもかかる週→最後に残るのが最新週
+      if (ei >= 0) o.rating = String(r[ei] || '').trim();
+      o.week = wi >= 0 ? parseInt(String(r[wi] == null ? '' : r[wi]).replace(/[^0-9\-]/g, ''), 10) : NaN;
+      o.weekDate = (d.getMonth() + 1) + '/' + d.getDate();
+    }
   }
   return out;
 }
@@ -1824,8 +1863,9 @@ function kuchikomiCards() {
     const n = (o && o.cur != null && o.prev != null) ? Math.max(0, o.cur - o.prev) : null;
     const band = n == null ? '' : (n >= goal ? 'green' : (n >= 1 ? 'yellow' : 'red'));
     const sig = n == null ? '' : (band === 'green' ? '🟢' : (band === 'yellow' ? '🟡' : '🔴'));
+    const wk = (o && o.cur != null && o.weekDate) ? `・${o.weekDate}週${isNaN(o.week) ? '' : ' +' + o.week}` : '';
     const sub = o && o.cur != null
-      ? `累計 ${o.cur}件${o.rating ? '・評価 ' + o.rating : ''}<span class="kpi-tag live">LIVE</span>`
+      ? `累計 ${o.cur}件${o.rating ? '・評価 ' + o.rating : ''}${wk}<span class="kpi-tag live">毎週水曜更新</span>`
       : '<span class="kpi-tag wait">週次集計待ち（毎週水曜更新）</span>';
     return `<div class="kpi-card ${band ? 'budget-' + band : ''}">
         <div class="kpi-card-label">口コミ回収（${name}・今月）</div>
@@ -1863,10 +1903,22 @@ function actCatKey(cat) {
 function actZero() { return { opt: 0, order: 0, sub: 0, line: 0, rope: 0, tanren: 0 }; }
 
 // 行動ログの当月分を集計 → { total, byClinic, byStaff: {姓: {month, byDate}} }（ログ未取得なら null）
+// 出どころの注記（中継APIの0行目: [ラベル, 読めた人, 読めなかった人]）
+function actSourceNote() {
+  const label = (CONFIG.ACTIONS && CONFIG.ACTIONS.SOURCE_LABEL) || '戦術記録';
+  const head = (kpiActLog && kpiActLog[0]) || [];
+  const ok = String(head[1] || '').trim(), ng = String(head[2] || '').trim();
+  const okN = ok ? ok.split('・').length : 0;
+  let t = `出どころ: ${label}${okN ? `（${okN}人分を統合）` : ''}`;
+  if (ng) t += `<span class="kpi-tag wait" style="margin-left:6px;">読めないシート: ${escHtml(ng)}</span>`;
+  return `<div class="kpi-note" style="flex-basis:100%;margin:0;">${t}</div>`;
+}
+
 let __actStatsCache;
 function actStats() {
   if (__actStatsCache !== undefined) return __actStatsCache;
-  if (!kpiActLog || kpiActLog.length < 3) return (__actStatsCache = null);
+  // 2026-09-14: 見出し2行があれば「読めている」＝当月0件でも 0 を返す（nullだと分析シートの古い値へ落ちてズレる）
+  if (!kpiActLog || kpiActLog.length < 2) return (__actStatsCache = null);
   const C = CONFIG.ACTIONS.LOG_COL;
   const ym = ymKey(0);
   const out = { total: actZero(), byClinic: {}, byStaff: {} };
@@ -2032,13 +2084,15 @@ function declVsActHtml(name) {
     const month = m
       ? `転換 ${m.opt + m.order + m.sub}/${G.tenkan}・LINE ${m.line}/${G.line}<br><span class="dv-detail">ロープレ ${m.rope}/${G.rope}・鍛錬 ${m.tanren}/${G.tanren}</span>`
       : '<span class="dv-muted">0</span>';
-    rows += `<tr><td class="ft-label">${escHtml(s)}</td><td>${today}</td><td>${yCell}</td><td>${month}</td></tr>`;
+    const url = (A.IKUSEI_URLS || {})[s];
+    const nameCell = url ? `<a href="${url}" target="_blank" rel="noopener" title="育成シート（戦術記録）を開く">${escHtml(s)} ✍️</a>` : escHtml(s);
+    rows += `<tr><td class="ft-label">${nameCell}</td><td>${today}</td><td>${yCell}</td><td>${month}</td></tr>`;
   });
-  const note = st ? '' : `<div class="kpi-note" style="margin:0 0 10px;">行動ログの入力が始まると「実行」がここに出ます。</div>`;
+  const note = st ? '' : `<div class="kpi-note" style="margin:0 0 10px;">育成シート「戦術記録」が読めていません（中継APIの共有を確認）。</div>`;
   return `
     <div class="kpi-block">
       <h3 class="kpi-h">今日のアクション（宣言 vs 実行）<span class="kpi-tag live">LIVE</span></h3>
-      <p class="section-desc" style="margin:0 0 10px;">宣言（朝の仕込み）× 実行（行動ログ）。目標/月＝転換${G.tenkan}・LINE${G.line}・ロープレ${G.rope}・鍛錬${G.tanren}（1人）。</p>
+      <p class="section-desc" style="margin:0 0 10px;">宣言（朝の仕込み）× 実行（各自の育成シート「戦術記録」）。目標/月＝転換${G.tenkan}・LINE${G.line}・ロープレ${G.rope}・鍛錬${G.tanren}（1人）。名前を押すと自分の育成シートが開きます。</p>
       ${note}
       <div class="flow-table-wrap"><table class="flow-table">
         <thead><tr><th>施術者</th><th>今日の宣言</th><th>昨日（宣言 → 実行）</th><th>当月実行 / 目標</th></tr></thead>
@@ -2046,7 +2100,7 @@ function declVsActHtml(name) {
       </table></div>
       <div class="dv-actions">
         <a class="dv-btn" href="${A.FORM_URL}" target="_blank" rel="noopener">☀️ 朝の仕込み（振り返りと宣言）</a>
-        <a class="dv-btn ghost" href="${A.LOG_URL}" target="_blank" rel="noopener">✍️ 行動ログ（実行を入力）</a>
+        <a class="dv-btn ghost" href="${A.LOG_URL}" target="_blank" rel="noopener">✍️ 戦術記録（自分の育成シートに入力）</a>
       </div>
     </div>`;
 }

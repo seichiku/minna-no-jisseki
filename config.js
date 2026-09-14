@@ -121,8 +121,12 @@ const CONFIG = {
     FLOW_TAB:     'フロー（3院）',   // 予約率(既存/新患/再診)をライブ取得
     PERSONAL_TAB: '個人ランキング',  // 個人ランキング(順位/施術者/院/売上/達成/目的休暇/稼働率/人時)
     DAILY_TAB:    '日次達成',        // 院別・毎日の予算達成(日割予算/診療日数/直近/1〜31日)
-    TACTICS_TAB:  '戦術（先行指標）',  // 戦術ダッシュボード月次集計(転換提案/LINE発信/ロープレ)
+    TACTICS_TAB:  '戦術（先行指標）',  // 分析シートの月次集計（旧戦術ダッシュボード由来・2026-09-09廃止後は更新されない。戦術記録が読めない時の最終フォールバックのみ）
     SUB_GOAL: 90,      // 12月サブ在籍ゴール
+    // 院別サブスク在籍の月目標（表示用）。月が変わったらここに追記する（無い月は直近の月を使い「(◯月目標)」と表示）
+    SUB_TARGETS: {
+      '2026-09': { '南砂': 30, '塩浜': 20, '東砂': 9 },
+    },
     ORDER_GOAL: 6,     // オーダー回数券 6名/施術者
     CLINICS: ['南砂', '塩浜', '東砂'],
     // ストック（オーダー/オプチケ）の施術者リスト＝台帳サマリーの成約施術者と一致させる
@@ -142,20 +146,35 @@ const CONFIG = {
   },
 
   // ============================================================
-  // 行動ログ×朝の宣言（2026-08-27 ループ連動）
-  // 戦術ダッシュボード「行動ログ」＝実行（1行=1アクション・種別プルダウン）、
-  // 朝の仕込みフォーム＝宣言（オプション/オーダー/サブスク提案数）。
+  // 戦術記録×朝の宣言（2026-08-27 ループ連動 → 2026-09-14 入力先を各自の育成シートへ）
+  // 実行＝各自の育成シート「戦術記録」タブ（1行=1アクション・種別プルダウン）。
+  //   中継APIが全員分を統合し、互換キー "TAC_ID|行動ログ" で返す（旧戦術ダッシュボードは2026-09-09廃止）。
+  // 宣言＝朝の仕込みフォーム（転換のフリーテキスト・ロープレ/鍛錬のやる宣言）。
   // LPは両方を突合して「昨日の宣言 vs 実行」「先行指標の内訳」をライブ表示する。
   // ============================================================
   ACTIONS: {
-    TAC_ID: '1Xwdlni7dCWkeFGu5NSvuwzTxMbCni5aR7Pdqm_zhFg8',  // 戦術ダッシュボード
+    TAC_ID: '1Xwdlni7dCWkeFGu5NSvuwzTxMbCni5aR7Pdqm_zhFg8',  // 互換キー用（旧戦術ダッシュボードのID。中継APIはこのキーで育成シート統合を返す）
     LOG_SHEET: '行動ログ',
-    LOG_COL: { date: 0, clinic: 1, staff: 2, kind: 3, count: 4, cat: 6 },  // 中継APIがslim済み
+    LOG_COL: { date: 0, clinic: 1, staff: 2, kind: 3, count: 4, cat: 6 },  // 中継APIが統合済み（0行目=出どころ、1行目=見出し）
+    SOURCE_LABEL: '育成シート「戦術記録」',
+    // 各自の育成シート（宣言vs実行の表から本人のシートへ飛ぶ）。中継API Code.gs の IKUSEI と揃える
+    IKUSEI_URLS: {
+      '石本': 'https://docs.google.com/spreadsheets/d/1fNq7CWb4LLj7n1N5xJYVeMPXX_WI2QoFVdAvaiI7KUI/edit',
+      '加藤': 'https://docs.google.com/spreadsheets/d/1bdaM928jB-tuVmQ07Nfimzb98vHdhV0-ORhvOu1Zwkg/edit',
+      '白田': 'https://docs.google.com/spreadsheets/d/1W5ET1R8S_VB1U61vNODU6_zeo57N2Po5YqcofsdJXFA/edit',
+      '篠田': 'https://docs.google.com/spreadsheets/d/1CWlIugWp_F3H26VW7d0nbU9YsYbWr3gDOm18lxbvTIQ/edit',
+      '中谷': 'https://docs.google.com/spreadsheets/d/1tT5A-PzTK6JN2QKtcQ3et3RJo7egcWDQdY3T_Wm7w6U/edit',
+      '植田': 'https://docs.google.com/spreadsheets/d/1iRuROCZGWed0uWrDK6KDVpnn28qACS8FuUBbJxmWt8Y/edit',
+      '河内': 'https://docs.google.com/spreadsheets/d/1t-8i3kOSjjS1tTtzRM_r_mHCHrWOZHIDtmqj8R4QSE4/edit',
+      '作岡': 'https://docs.google.com/spreadsheets/d/1ZSTXQzxI1wNYoAaAK7RRuZWRBj1qcNdsQoZrMr1WHDw/edit',
+      '田村': 'https://docs.google.com/spreadsheets/d/1Fgx8btAiWCoOpFsO7AmHpWdqbmXao-HxOiTvrBgPp64/edit',
+      '栗田': 'https://docs.google.com/spreadsheets/d/1_74VwPTjpctG1AxWLBegq0Rp5xAbjcghOixHMHZvJdc/edit',
+    },
     ASA_ID: '1xRXcMz1DzWUjvDZkZ2Jgoq9F_OewgKiTYyU4cKvA1ZM',  // 朝の仕込みDB
     ASA_SHEET: '2026/8/28~',   // 2026-08-27 質問改定で新シート化（日付入り名。質問改定ごとに紐づけ直し→新タブ名に更新）
     ASA_COL: { date: 2, staff: 3 },  // 【宣言】列はヘッダー文字列から動的検出
     FORM_URL: 'https://docs.google.com/forms/d/e/1FAIpQLScNDzV3os7TQpv2ynbrQQuHZZZLerm3RF6ykZpuELBU4FstWQ/viewform',
-    LOG_URL: 'https://docs.google.com/spreadsheets/d/1Xwdlni7dCWkeFGu5NSvuwzTxMbCni5aR7Pdqm_zhFg8/edit',
+    LOG_URL: 'https://drive.google.com/drive/folders/1jzv1C26dVzRh_caepmG4kDEJ6If4OgQE',  // 育成シートの親フォルダ（新人育成（Practice））。本人リンクは IKUSEI_URLS
     GOAL_TENKAN: 300,   // 転換提案 全社/月（戦術タブF列が取れない時のフォールバック）
     // 1人あたり月目標（2026-08-27 竹中決定。スタッフは月8休み＝出勤22日）
     GOALS_PP: {
@@ -175,7 +194,8 @@ const CONFIG = {
 
   // ============================================================
   // 口コミ回収（チーム実績・先行指標：週次効果測定ダッシュボードのGBPタブから）
-  // 当月件数=当月最新の「クチコミ累計」−前月最後の「クチコミ累計」。毎週水曜8時の週次GASが更新。
+  // 当月件数＝最新週の「クチコミ累計」−「当月に1日もかからない最後の週」の累計。毎週水曜8時の週次GASが更新
+  // （週ラベル=月曜日付。2026-09-14: 旧ロジックは週ラベルの月で判定していたため毎月前半が「集計待ち」になっていた）。
   // ============================================================
   KUCHIKOMI: {
     ID: '1NiYQORX9I7imdlt-ycY6_Ry0CqYl0Y0W6gwS0mFqfvM',  // 週次効果測定ダッシュボード

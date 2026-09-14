@@ -539,6 +539,7 @@ body {
 }
 .guide-title { font-weight: 700; white-space: nowrap; }
 .guide-steps { opacity: 0.95; }
+.guide-fresh { opacity: 0.8; font-size: 12px; white-space: nowrap; }
 .dv-btn {
   display: inline-block;
   padding: 8px 16px;

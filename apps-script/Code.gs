@@ -44,8 +44,25 @@ var KAISU_ID    = '1TZjeowvbF6fqPA2BmE-ryxk360v3E-ZkSgBbknMCMc4'; // 回数券�
 var ANALYSIS_ID = '1mIGrmd9S6QrOZz8t5Ntqm9Tqs37JWW_aVVb54AZjh94'; // 分析シート
 var MASTER_ID   = '17vs50q2yaxK1NmuHaUgczXS8WMJQH38SSI65yhw3YaQ'; // 顧客マスタ（離客フォローリスト用）
 var WEEKLY_ID   = '1NiYQORX9I7imdlt-ycY6_Ry0CqYl0Y0W6gwS0mFqfvM'; // 週次効果測定ダッシュボード（口コミ回収 2026-08-21）
-var TAC_ID      = '1Xwdlni7dCWkeFGu5NSvuwzTxMbCni5aR7Pdqm_zhFg8'; // 戦術ダッシュボード（行動ログ 2026-08-27）
+var TAC_ID      = '1Xwdlni7dCWkeFGu5NSvuwzTxMbCni5aR7Pdqm_zhFg8'; // 旧 戦術ダッシュボード（2026-09-09 廃止。キー名 "TAC_ID|行動ログ" は互換のため残す）
 var ASA_ID      = '1xRXcMz1DzWUjvDZkZ2Jgoq9F_OewgKiTYyU4cKvA1ZM'; // 朝の仕込みDB（今日の宣言 2026-08-27）
+
+// 各自の育成シート（2026-09-09〜 先行指標＝各シートの「戦術記録」タブ。1行=1アクション）
+// 院は各シート「目標」タブの「所属」セルから読む（読めない時は clinic を使う）。
+// 追加・退職はここを編集（config.js の ACTIONS.IKUSEI_URLS も揃える）。
+var IKUSEI_TAB = '戦術記録';
+var IKUSEI = [
+  { name: '石本', clinic: '南砂', id: '1fNq7CWb4LLj7n1N5xJYVeMPXX_WI2QoFVdAvaiI7KUI' },
+  { name: '加藤', clinic: '南砂', id: '1bdaM928jB-tuVmQ07Nfimzb98vHdhV0-ORhvOu1Zwkg' },
+  { name: '白田', clinic: '南砂', id: '1W5ET1R8S_VB1U61vNODU6_zeo57N2Po5YqcofsdJXFA' },
+  { name: '篠田', clinic: '塩浜', id: '1CWlIugWp_F3H26VW7d0nbU9YsYbWr3gDOm18lxbvTIQ' },
+  { name: '中谷', clinic: '塩浜', id: '1tT5A-PzTK6JN2QKtcQ3et3RJo7egcWDQdY3T_Wm7w6U' },
+  { name: '植田', clinic: '東砂', id: '1iRuROCZGWed0uWrDK6KDVpnn28qACS8FuUBbJxmWt8Y' },
+  { name: '河内', clinic: '東砂', id: '1t-8i3kOSjjS1tTtzRM_r_mHCHrWOZHIDtmqj8R4QSE4' },
+  { name: '作岡', clinic: '東砂', id: '1ZSTXQzxI1wNYoAaAK7RRuZWRBj1qcNdsQoZrMr1WHDw' },
+  { name: '田村', clinic: '東砂', id: '1Fgx8btAiWCoOpFsO7AmHpWdqbmXao-HxOiTvrBgPp64' },
+  { name: '栗田', clinic: '東砂', id: '1_74VwPTjpctG1AxWLBegq0Rp5xAbjcghOixHMHZvJdc' }
+];
 
 // 返すシート一覧 [スプレッドシートID, シート名]。キーは "ID|シート名"。
 // 2026-08-28: 旧日報系3シート（フォームの回答 1/2/3）を除外＝日報システムは7月廃止で
@@ -60,7 +77,7 @@ var SHEET_SPECS = [
   [ANALYSIS_ID, '個人ランキング'],      // 個人ランキング
   [MASTER_ID,   '顧客マスタ'],           // 離客フォローリスト（氏名×院×最終来院日）
   [WEEKLY_ID,   'GBP(3店舗)'],          // 口コミ回収の現状（クチコミ累計/週増分/評価・毎週水曜更新）
-  [TAC_ID,      '行動ログ'],             // 提案/LINE/ロープレの生ログ（宣言vs実行・先行指標の内訳）
+  [TAC_ID,      '行動ログ'],             // 先行指標の生ログ＝各自の育成シート「戦術記録」を統合（キー名は互換のため旧名のまま 2026-09-14）
   [ASA_ID,      '2026/8/28~'],          // 朝の仕込み＝今日の宣言（2026-08-27 質問改定で新シート化・日付入り名。質問改定ごとに紐づけ直し→ここを新タブ名に更新）
 ];
 
@@ -107,6 +124,7 @@ function doPost(e) {
       ok: true,
       user: { name: claims.name || '', email: email, picture: claims.picture || '' },
       sheets: readBundle_(false),
+      readAt: __readAt,   // 各シートの取得時刻（キャッシュ命中時はキャッシュに入れた時刻）
     });
   } catch (err) {
     return json_({ ok: false, error: 'server_error', message: String(err) });
@@ -119,6 +137,7 @@ function doPost(e) {
 // forceRefresh=true : 全件読み直してキャッシュを更新（warmCache用）
 // 100KB/キー超のシートは put が失敗するので黙ってスキップ＝そのシートだけ毎回読む。
 // ============================================================
+var __readAt = {};   // キー→そのシートを実際に読んだ時刻(ms)。LPの「データ取得時刻」表示用（2026-09-14）
 function readBundle_(forceRefresh) {
   var sheets = {};
   var cache = {};
@@ -127,11 +146,13 @@ function readBundle_(forceRefresh) {
     var id = SHEET_SPECS[i][0];
     var name = SHEET_SPECS[i][1];
     var key = id + '|' + name;
-    var ck = 'b1|' + key; // キャッシュキー（形式変更時は b2| に上げて無効化）
+    var ck = 'b2|' + key; // キャッシュキー（形式変更時は番号を上げて無効化。b2=2026-09-14 {g,t}形式）
     if (!forceRefresh) {
       var hit = cacheSvc.get(ck);
       if (hit != null) {
-        sheets[key] = JSON.parse(hit);
+        var obj = JSON.parse(hit);
+        sheets[key] = obj.g;
+        __readAt[key] = obj.t;
         continue;
       }
     }
@@ -142,9 +163,9 @@ function readBundle_(forceRefresh) {
         var ss = cache[id] || (cache[id] = SpreadsheetApp.openById(id));
         var grid;
         if (id === TAC_ID && name === '行動ログ') {
-          // 行動ログは月×院別タブ（例:「南砂 8月」）。キーは従来どおり
-          // "TAC_ID|行動ログ" のまま、当月3タブを統合スキーマで返す。
-          grid = readTacticsMerged_(ss);
+          // 2026-09-14: 旧戦術ダッシュボードは廃止。各自の育成シート「戦術記録」を
+          // 統合して従来スキーマで返す（キー "TAC_ID|行動ログ" はLP互換のため据え置き）。
+          grid = readIkuseiTactics_();
         } else {
           var sh = ss.getSheetByName(name);
           // 「フロー（3院）」はタブ名に月が付く（例: フロー（3院）2026年8月）→プレフィックス一致で解決
@@ -161,7 +182,8 @@ function readBundle_(forceRefresh) {
           if (id === ASA_ID) grid = slimAsa_(grid);
         }
         sheets[key] = grid;
-        try { cacheSvc.put(ck, JSON.stringify(grid), CACHE_TTL_SEC); } catch (ignore) {}
+        __readAt[key] = new Date().getTime();
+        try { cacheSvc.put(ck, JSON.stringify({ g: grid, t: __readAt[key] }), CACHE_TTL_SEC); } catch (ignore) {}
         break;
       } catch (err) {
         sheets[key] = null; // アクセス不可（共有未設定）。エラーはキャッシュしない
@@ -199,35 +221,83 @@ function slimMaster_(grid) {
   return out;
 }
 
-// 戦術ダッシュボードの当月・院別行動ログタブ（「南砂 8月」等）を統合し、
-// 従来の統一スキーマ（0=日付/1=院/2=担当者/3=種別/4=件数/6=カテゴリ）で返す。
-// 各タブは A日付 B担当者 C種別 D件数 Eメモ Fカテゴリ(自動) G実効件数(自動)。
-// 未入力行（数式プリセットだけの行）はスキップ。LP側の列マッピングは v2 から不変。
-function readTacticsMerged_(ss) {
-  var clinics = ['南砂', '塩浜', '東砂'];
-  var m = new Date().getMonth() + 1;
+// 各自の育成シート「戦術記録」タブ（A日付 B種別 C件数 Dメモ Eカテゴリ(自動) F実効件数(自動)）を
+// 全員分統合し、従来の統一スキーマ（0=日付/1=院/2=担当者/3=種別/4=件数/6=カテゴリ）で返す。
+// 先頭2行はヘッダー（row0[1]=読めた人・row0[2]=読めなかった人 → LPが「出どころ」に表示）。
+// 日付は getValues() の Date を yyyy-MM-dd に正規化（表示値「9/1」のままだとLP側で年が判定できない）。
+// 「9/1」のような文字列は今年扱い（1ヶ月以上未来なら前年）。
+function readIkuseiTactics_() {
+  var okNames = [], ngNames = [];
   var out = [
-    ['行動ログ（当月・3院統合）'],
+    ['戦術記録（育成シート・全員統合）', '', ''],
     ['日付', '院', '担当者', '種別', '件数', '', 'カテゴリ(自動)']
   ];
-  for (var c = 0; c < clinics.length; c++) {
-    var sh = ss.getSheetByName(clinics[c] + ' ' + m + '月');
-    if (!sh) continue;
-    var grid = sh.getDataRange().getDisplayValues();
-    for (var i = 2; i < grid.length; i++) {
-      var r = grid[i] || [];
-      if (String(r[0] || '') === '') continue;
-      var row = [];
-      row[0] = r[0] || '';        // 日付
-      row[1] = clinics[c];        // 院（タブ名から）
-      row[2] = r[1] || '';        // 担当者
-      row[3] = r[2] || '';        // 種別
-      row[4] = r[3] || '';        // 件数
-      row[6] = r[5] || '';        // カテゴリ(自動)
-      out.push(row);
+  var today = new Date();
+  for (var i = 0; i < IKUSEI.length; i++) {
+    var p = IKUSEI[i];
+    try {
+      var ss = SpreadsheetApp.openById(p.id);
+      var sh = ss.getSheetByName(IKUSEI_TAB);
+      if (!sh) { ngNames.push(p.name + '(タブ無し)'); continue; }
+      var clinic = ikuseiClinic_(ss) || p.clinic;
+      var lr = sh.getLastRow();
+      if (lr < 3) { okNames.push(p.name); continue; }
+      var vals = sh.getRange(3, 1, lr - 2, 6).getValues();
+      var disp = sh.getRange(3, 1, lr - 2, 6).getDisplayValues();
+      for (var r = 0; r < vals.length; r++) {
+        var d = normDate_(vals[r][0], disp[r][0], today);
+        var kind = String(disp[r][1] || '').trim();
+        if (!d || !kind) continue;   // 日付か種別が無い行＝未入力（数式プリセットのみ）
+        var row = [];
+        row[0] = d;
+        row[1] = clinic;
+        row[2] = p.name;
+        row[3] = kind;
+        row[4] = String(disp[r][2] || '').trim();   // 件数（空欄=1件はLP側で解釈）
+        row[6] = String(disp[r][4] || '').trim();   // カテゴリ(自動)
+        out.push(row);
+      }
+      okNames.push(p.name);
+    } catch (e) {
+      ngNames.push(p.name);
     }
   }
+  out[0][1] = okNames.join('・');
+  out[0][2] = ngNames.join('・');
   return out;
+}
+
+// 育成シート「目標」タブの「所属」セル（例: 南砂院）から院名を取る。見つからなければ ''。
+function ikuseiClinic_(ss) {
+  try {
+    var sh = ss.getSheets()[0];
+    var v = sh.getRange(1, 1, 8, 2).getValues();
+    for (var i = 0; i < v.length; i++) {
+      if (String(v[i][0]).trim() === '所属') return String(v[i][1] || '').replace('院', '').trim();
+    }
+  } catch (e) {}
+  return '';
+}
+
+// 日付の正規化（Date→yyyy-MM-dd／「9/1」「2026/9/1」等の文字列→yyyy-MM-dd／不明→''）
+function normDate_(val, dispVal, today) {
+  var d = null;
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    d = val;
+  } else {
+    var t = String(dispVal || val || '').trim();
+    var m = t.match(/^(\d{4})[\/\-年](\d{1,2})[\/\-月](\d{1,2})/);
+    if (m) d = new Date(+m[1], +m[2] - 1, +m[3]);
+    else {
+      m = t.match(/^(\d{1,2})[\/月](\d{1,2})/);
+      if (m) {
+        d = new Date(today.getFullYear(), +m[1] - 1, +m[2]);
+        if (d.getTime() - today.getTime() > 31 * 86400000) d.setFullYear(d.getFullYear() - 1);
+      }
+    }
+  }
+  if (!d) return '';
+  return Utilities.formatDate(d, 'JST', 'yyyy-MM-dd');
 }
 
 // 朝の仕込みDBを Timestamp/日付/担当者/役割＋「【宣言】」で始まる列だけに間引く
@@ -306,7 +376,12 @@ function ensureAccessSummary_(ss) {
 }
 
 // 動作確認用（ブラウザで /exec を開いたときの応答）
-function doGet() {
+function doGet(e) {
+  // 2026-09-14: 育成シート読込の疎通確認（?diag=ikusei）。件数と読めた/読めなかった人だけ返す（個人情報なし）。
+  if (e && e.parameter && e.parameter.diag === 'ikusei') {
+    var g = readIkuseiTactics_();
+    return json_({ ok: true, rows: g.length - 2, read: g[0][1], unread: g[0][2], sample: g.length > 2 ? g[2] : null });
+  }
   return json_({ ok: true, msg: 'みんなの実績 API. POST an id_token as the request body.' });
 }
 
