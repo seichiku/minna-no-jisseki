@@ -1911,7 +1911,7 @@ function actSourceNote() {
   const okN = ok ? ok.split('・').length : 0;
   let t = `出どころ: ${label}${okN ? `（${okN}人分を統合）` : ''}`;
   if (ng) t += `<span class="kpi-tag wait" style="margin-left:6px;">読めないシート: ${escHtml(ng)}</span>`;
-  return `<div class="kpi-note" style="flex-basis:100%;margin:0;">${t}</div>`;
+  return `<div class="kpi-note" style="grid-column:1/-1;flex-basis:100%;margin:0;">${t}</div>`;
 }
 
 let __actStatsCache;
