@@ -41,3 +41,9 @@
 
 `Code.gs` を編集したら、**デプロイ →「デプロイを管理」→ 既存のデプロイを編集 →
 バージョンを「新規」にして保存**（URL は変わりません）。新規デプロイを作ると URL が変わるので注意。
+
+## デプロイ（clasp・2026-09-17〜）
+Chromeのエディタ操作は不要。空ディレクトリで `.clasp.json` に `{"scriptId":"12cNp7rn0-nol2YbOr2X0s3Ay6JMytIL32rXR331CHktP8giJ23nFc3E0","rootDir":"."}` を置き、
+`npx clasp -u seichiku pull` → リモートのファイル名は `コード.js` なので `Code.gs` をそこへ上書き → `npx clasp -u seichiku push -f` →
+`npx clasp -u seichiku deploy -i AKfycbyTUM0MIjYag0sm67laJYlcy-gqhUCK2lRMzjEPQaj61vYEFUECIzn7nidMXK4c5WO5 -d "説明"`（既存デプロイを新バージョンに更新・URL不変）。
+v16 (2026-09-17): 分析シートのタブ再生成中に空/途中の表をキャッシュしないガードを追加。
