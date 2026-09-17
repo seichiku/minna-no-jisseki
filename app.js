@@ -1000,20 +1000,19 @@ function paceChartSvg(seriesList, opts) {
   svg += `<text x="${px(0)}" y="${H - 8}" class="pc-xlabel">月初</text>`;
   svg += `<text x="${px(50)}" y="${H - 8}" class="pc-xlabel" text-anchor="middle">月半ば</text>`;
   svg += `<text x="${px(100)}" y="${H - 8}" class="pc-xlabel" text-anchor="end">月末</text>`;
-  // 予算ペースの対角線（ラベルは線の下側＝上側を通る昨年着地の線と重ねない）
+  // 予算ペースの対角線（斜線はこの1本だけ）
   svg += `<line x1="${px(0)}" y1="${py(0)}" x2="${px(100)}" y2="${py(100)}" class="pc-diagonal"/>`;
-  // 参照線（損益分岐・昨年着地）＝予算ペースと同じく月初0→月末の到達点へ右上がりの斜線（2026-09-17 竹中要望）
-  // ラベル（予算ペースも含む）は月末側の線の端に置き、近いときは上下にずらす
-  const rls = [{ rl: { y: 100, label: '予算ペース', cls: 'budget', noLine: true }, ly: py(100) - 6 }]
-    .concat((opts.refLines || []).map(rl => ({ rl, ly: py(rl.y) - 6 })))
-    .sort((a, b) => a.ly - b.ly);
+  svg += `<text x="${px(72)}" y="${py(72) - 8}" class="pc-diagonal-label" text-anchor="middle">予算ペース</text>`;
+  // 参照点（損益分岐・昨年着地）＝線は引かず、月末（右端）の到達点に ◀ の目印とラベルだけ置く（2026-09-17 案A）。
+  // 着地予測（点線）の先端がこの目印より上か下かで読む。ラベルが近いときは上下にずらす
+  const rls = (opts.refLines || []).map(rl => ({ rl, ly: py(rl.y) + 4 })).sort((a, b) => a.ly - b.ly);
   for (let i = 1; i < rls.length; i++) {
     if (rls[i].ly - rls[i - 1].ly < 15) rls[i].ly = rls[i - 1].ly + 15;
   }
   rls.forEach(o => {
-    const rl = o.rl, cls = rl.cls ? ' ' + rl.cls : '';
-    if (!rl.noLine) svg += `<line x1="${px(0)}" y1="${py(0)}" x2="${px(100)}" y2="${py(rl.y)}" class="pc-refline${cls}"/>`;
-    svg += `<text x="${px(100) - 4}" y="${o.ly}" class="pc-reflabel${cls}" text-anchor="end">${rl.label}</text>`;
+    const rl = o.rl, cls = rl.cls ? ' ' + rl.cls : '', x = px(100), y = py(rl.y);
+    svg += `<polygon points="${x + 2},${y} ${x - 9},${y - 6} ${x - 9},${y + 6}" class="pc-refmark${cls}"/>`;
+    svg += `<text x="${x - 13}" y="${o.ly}" class="pc-reflabel${cls}" text-anchor="end">${rl.label}</text>`;
   });
   // 系列
   const endLabels = [];
@@ -1122,7 +1121,7 @@ function renderKpiPaceChart() {
   const legend =
     `<span class="pc-legend-item"><i style="background:${COMPANY_COLOR}"></i>全社（3店舗合計）</span>` +
     `<span class="pc-legend-item"><i class="pc-legend-proj"></i>点線＝着地予測</span>` +
-    (be ? `<span class="pc-legend-item"><i class="pc-legend-be"></i>損益分岐 ${yenFmt(be)}（3店舗）</span>` : '');
+    (be ? `<span class="pc-legend-item"><span class="pc-legend-mark be">▶</span>損益分岐 ${yenFmt(be)}（3店舗）＝月末にここを超えれば黒字</span>` : '');
   el.innerHTML = svg + `<div class="pc-legend">${legend}</div>`;
 }
 
@@ -1399,7 +1398,7 @@ function clinicChartHtml(name) {
   const legend =
     `<span class="pc-legend-item"><i style="background:${CLINIC_COLORS[name]}"></i>${name}院</span>` +
     `<span class="pc-legend-item"><i class="pc-legend-proj"></i>点線＝着地予測</span>` +
-    (be ? `<span class="pc-legend-item"><i class="pc-legend-be"></i>損益分岐 ${yenFmt(be.v)}${be.est ? '（3店舗688万円を予算比で按分）' : ''}</span>` : '');
+    (be ? `<span class="pc-legend-item"><span class="pc-legend-mark be">▶</span>損益分岐 ${yenFmt(be.v)}${be.est ? '（3店舗688万円を予算比で按分）' : ''}</span>` : '');
   return `
     <div class="kpi-block">
       <h3 class="kpi-h">ペースチャート<span class="kpi-tag live">LIVE</span></h3>
