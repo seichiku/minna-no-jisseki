@@ -514,7 +514,17 @@ body {
 .ms-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; background: #e2e8f0; color: var(--text-light); font-size: 11px; font-weight: 700; margin-left: 6px; }
 .ms-badge.on { background: #dcfce7; color: #15803d; }
 .ms-card .kpi-card-label { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
-/* 2026-09-17: 単価中心の個人カード */
+/* 2026-09-17: 個人予算カード（マイルストーン廃止） */
+.ms-card .pb-head { margin-left: auto; font-size: 13px; font-weight: 700; }
+.pb-row { display: flex; align-items: baseline; gap: 8px; font-size: 14px; margin: 4px 0; }
+.pb-row span { color: var(--text-light); font-size: 12px; min-width: 56px; }
+.pb-row b { font-size: 20px; font-weight: 700; }
+.pb-row em { font-style: normal; font-size: 12px; color: var(--text-light); }
+.pb-gap { margin: 10px 0 6px; padding: 10px 12px; border-radius: 10px; background: #fee2e2; color: #991b1b; font-size: 15px; font-weight: 600; }
+.pb-gap b { font-size: 24px; }
+.pb-gap.done { background: #dcfce7; color: #166534; }
+.pb-gap.none { background: #f1f5f9; color: var(--text-light); font-size: 13px; font-weight: 500; }
+.kpi-card.budget-gray { border-left: 5px solid #94a3b8; background: #f8fafc; }
 .ms-tanka { font-size: 15px; margin: 4px 0 8px; color: var(--text); }
 .ms-tanka b { font-size: 22px; font-weight: 700; }
 .ms-tanka span { font-size: 12px; color: var(--text-light); margin-left: 6px; }

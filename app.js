@@ -1453,49 +1453,51 @@ function clinicPersonalHtml(name) {
     const clinic = String(r[2] || '').trim();
     if (!(clinic.includes(name) || name.includes(clinic))) continue;
     const sales = kpiNum(r[3]);
-    const ms = personMilestone(sales, prog);
-    const sig = ms.band === 'green' ? '🟢' : (ms.band === 'yellow' ? '🟡' : '🔴');
-    const reachedLine = ms.reached
-      ? `<span class="ms-badge on">✅ ${ms.reached.l} 到達</span>`
-      : '';
-    // 2026-09-17 竹中要望「細かい部分がわかりづらい／単価を意識させたい」
-    // → 着地予測・昨年同月・自己ベスト・次のマイルストーン行を廃止し、①個人の単価 ②損益分岐(120万)までの差分 ③単価を上げた場合の効果 の3行に
-    const unit = kpiNum(r[9]);                       // 個人ランキングタブ J列＝単価（売上÷のべ担当）
+    // 2026-09-17 竹中指示「緑で達成の錯覚を与えない／マイルストーン・120万・残り日数は不要／個人予算に対してあといくら足りないかを現実として」
+    // 個人予算＝個人ランキングタブ M列（各院日計表「スタッフマスタ」）。信号＝ペース比（実績 ÷ 今日までの予定額）で🟢100/🟡90〜99/🔴〜89
+    const budget = r.length > 12 ? kpiNum(r[12]) : 0;
+    const hasBudgetCol = r.length > 12;
+    const unit = kpiNum(r[9]);                       // 単価（売上÷のべ担当）
     const unitGoal = (CONFIG.FOCUS && CONFIG.FOCUS.TANKA_GOAL) || 5000;
-    const ken = unit > 0 ? Math.round(sales / unit) : 0;   // 今月ののべ担当数
+    const ken = unit > 0 ? Math.round(sales / unit) : 0;
     const unitSig = unit >= unitGoal ? '🟢' : (unit >= unitGoal * 0.8 ? '🟡' : '🔴');
-    const tankaLine = unit > 0
-      ? `<div class="ms-tanka">単価 <b>${yenFmt(unit)}</b> ${unitSig} <span>目標 ${yenFmt(unitGoal)}${ken ? `・のべ ${ken}人` : ''}</span></div>`
-      : `<div class="ms-tanka">単価 <b>—</b> <span>目標 ${yenFmt(unitGoal)}</span></div>`;
-    const BE = CONFIG.KPI.MILESTONES.find(m => m.note === '損益分岐') || { v: 1200000, l: '120万' };
-    const remainDays = prog ? Math.max(0, prog.total - prog.elapsed) : 0;
-    let gapLine = '';
-    if (sales >= BE.v) {
-      gapLine = `<div class="kpi-need">✅ ${BE.l}（損益分岐）達成 <b>+${yenFmt(sales - BE.v)}</b></div>`;
+    let band = 'gray', head = '', body = '';
+    if (budget > 0) {
+      const paceTarget = (prog && prog.total > 0) ? Math.round(budget / prog.total * prog.elapsed) : 0;
+      const pacePct = paceTarget > 0 ? Math.round(sales / paceTarget * 100) : 0;
+      const budPct = Math.round(sales / budget * 100);
+      band = paceTarget > 0 ? paceBand(pacePct) : 'gray';
+      head = paceTarget > 0 ? `${paceSig(pacePct)} ペース ${pacePct}%` : '';
+      const gap = budget - sales;
+      body = `
+        <div class="pb-row"><span>個人予算</span><b>${yenFmt(budget)}</b></div>
+        <div class="pb-row"><span>現在</span><b>${yenFmt(sales)}</b><em>予算比 ${budPct}%</em></div>
+        ${gap > 0
+          ? `<div class="pb-gap">予算まで あと <b>${yenFmt(gap)}</b></div>`
+          : `<div class="pb-gap done">予算達成 <b>+${yenFmt(-gap)}</b></div>`}`;
     } else {
-      const gap = BE.v - sales;
-      const perDay = remainDays > 0 ? Math.ceil(gap / remainDays) : 0;
-      const ppl = (unit > 0 && perDay > 0) ? `＝ いまの単価で <b>約${Math.ceil(perDay / unit)}人/日</b>` : '';
-      gapLine = `<div class="kpi-need">${BE.l}まで あと <b>${yenFmt(gap)}</b>${remainDays > 0 ? `<br>残り${remainDays}日 → 1日 <b>${yenFmt(perDay)}</b> ${ppl}` : ''}</div>`;
+      body = `
+        <div class="pb-row"><span>現在</span><b>${yenFmt(sales)}</b></div>
+        <div class="pb-gap none">${hasBudgetCol ? '個人予算が未設定（日計表「スタッフマスタ」）' : '個人予算は次回更新後に表示'}</div>`;
     }
-    let leverLine = '';
-    if (unit > 0 && unit < unitGoal && ken > 0) {
-      leverLine = `<div class="ms-lever">単価を ${yenFmt(unitGoal)} にすると <b>+${yenFmt((unitGoal - unit) * ken)}</b>（のべ${ken}人 × +${yenFmt(unitGoal - unit)}）</div>`;
-    }
+    const tankaLine = unit > 0
+      ? `<div class="ms-tanka">単価 <b>${yenFmt(unit)}</b> ${unitSig} <span>目標 ${yenFmt(unitGoal)}・のべ ${ken}人</span></div>`
+      : '';
+    const leverLine = (unit > 0 && unit < unitGoal && ken > 0)
+      ? `<div class="ms-lever">単価を ${yenFmt(unitGoal)} にすると <b>+${yenFmt((unitGoal - unit) * ken)}</b></div>`
+      : '';
     cards.push(`
-      <div class="kpi-card budget-${ms.band} ms-card">
-        <div class="kpi-card-label">${escHtml(staff)} ${reachedLine}</div>
-        <div class="kpi-card-big">${yenFmt(sales)} <span class="kpi-card-unit">${sig}</span></div>
-        ${milestoneBarHtml(sales, ms)}
+      <div class="kpi-card budget-${band} ms-card">
+        <div class="kpi-card-label">${escHtml(staff)}<span class="pb-head">${head}</span></div>
+        ${body}
         ${tankaLine}
-        ${gapLine}
         ${leverLine}
       </div>`);
   }
   if (cards.length === 0) return '';
   return `
     <div class="kpi-block">
-      <h3 class="kpi-h">個人のマイルストーン（この院）<span class="kpi-tag live">LIVE</span></h3>
+      <h3 class="kpi-h">個人予算（この院）<span class="kpi-tag live">LIVE</span></h3>
       <div class="kpi-cards ms-cards">${cards.join('')}</div>
     </div>`;
 }
