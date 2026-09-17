@@ -479,6 +479,7 @@ body {
 .pc-refline.be { stroke: #dc2626; stroke-width: 1.8; stroke-dasharray: 8 4; }
 .pc-reflabel.be { fill: #dc2626; font-size: 12px; font-weight: 700; }
 .pc-legend-be { display: inline-block; width: 18px; height: 0; border-top: 2px dashed #dc2626; }
+.pc-reflabel.budget { fill: #94a3b8; font-size: 11px; }
 .pc-line { fill: none; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
 .pc-proj { stroke-width: 2; stroke-dasharray: 4 5; opacity: 0.75; }
 .pc-endlabel { font-size: 13px; font-weight: 700; }
@@ -511,6 +512,12 @@ body {
 .ms-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; background: #e2e8f0; color: var(--text-light); font-size: 11px; font-weight: 700; margin-left: 6px; }
 .ms-badge.on { background: #dcfce7; color: #15803d; }
 .ms-card .kpi-card-label { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+/* 2026-09-17: 単価中心の個人カード */
+.ms-tanka { font-size: 15px; margin: 4px 0 8px; color: var(--text); }
+.ms-tanka b { font-size: 22px; font-weight: 700; }
+.ms-tanka span { font-size: 12px; color: var(--text-light); margin-left: 6px; }
+.ms-lever { margin-top: 8px; font-size: 13px; color: #92400e; background: #fef3c7; border-radius: 8px; padding: 6px 10px; }
+.ms-lever b { font-size: 15px; }
 .ms-cards .kpi-card { min-width: 300px; }
 
 /* 個人ランキング追加分 */

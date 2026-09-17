@@ -1000,18 +1000,20 @@ function paceChartSvg(seriesList, opts) {
   svg += `<text x="${px(0)}" y="${H - 8}" class="pc-xlabel">月初</text>`;
   svg += `<text x="${px(50)}" y="${H - 8}" class="pc-xlabel" text-anchor="middle">月半ば</text>`;
   svg += `<text x="${px(100)}" y="${H - 8}" class="pc-xlabel" text-anchor="end">月末</text>`;
-  // 予算ペースの対角線
+  // 予算ペースの対角線（ラベルは線の下側＝上側を通る昨年着地の線と重ねない）
   svg += `<line x1="${px(0)}" y1="${py(0)}" x2="${px(100)}" y2="${py(100)}" class="pc-diagonal"/>`;
-  svg += `<text x="${px(72)}" y="${py(72) - 8}" class="pc-diagonal-label" text-anchor="middle">予算ペース</text>`;
-  // 参照線（損益分岐・昨年着地など）。ラベルが近いときは上下にずらす
-  const rls = (opts.refLines || []).map(rl => ({ rl, ly: py(rl.y) - 5 })).sort((a, b) => a.ly - b.ly);
+  // 参照線（損益分岐・昨年着地）＝予算ペースと同じく月初0→月末の到達点へ右上がりの斜線（2026-09-17 竹中要望）
+  // ラベル（予算ペースも含む）は月末側の線の端に置き、近いときは上下にずらす
+  const rls = [{ rl: { y: 100, label: '予算ペース', cls: 'budget', noLine: true }, ly: py(100) - 6 }]
+    .concat((opts.refLines || []).map(rl => ({ rl, ly: py(rl.y) - 6 })))
+    .sort((a, b) => a.ly - b.ly);
   for (let i = 1; i < rls.length; i++) {
-    if (rls[i].ly - rls[i - 1].ly < 14) rls[i].ly = rls[i - 1].ly + 14;
+    if (rls[i].ly - rls[i - 1].ly < 15) rls[i].ly = rls[i - 1].ly + 15;
   }
   rls.forEach(o => {
     const rl = o.rl, cls = rl.cls ? ' ' + rl.cls : '';
-    svg += `<line x1="${L}" y1="${py(rl.y)}" x2="${W - R}" y2="${py(rl.y)}" class="pc-refline${cls}"/>`;
-    svg += `<text x="${W - R}" y="${o.ly}" class="pc-reflabel${cls}" text-anchor="end">${rl.label}</text>`;
+    if (!rl.noLine) svg += `<line x1="${px(0)}" y1="${py(0)}" x2="${px(100)}" y2="${py(rl.y)}" class="pc-refline${cls}"/>`;
+    svg += `<text x="${px(100) - 4}" y="${o.ly}" class="pc-reflabel${cls}" text-anchor="end">${rl.label}</text>`;
   });
   // 系列
   const endLabels = [];
@@ -1455,37 +1457,40 @@ function clinicPersonalHtml(name) {
     const ms = personMilestone(sales, prog);
     const sig = ms.band === 'green' ? '🟢' : (ms.band === 'yellow' ? '🟡' : '🔴');
     const reachedLine = ms.reached
-      ? `<span class="ms-badge on">✅ ${ms.reached.l}${ms.reached.note ? '（' + ms.reached.note + '）' : ''} 到達</span>`
-      : `<span class="ms-badge">最初のマイルストーン ${ms.MS[0].l} へ</span>`;
-    let nextLine = '';
-    if (!ms.next) {
-      nextLine = `<div class="kpi-need">全マイルストーン制覇 🏆 このまま上積みを</div>`;
+      ? `<span class="ms-badge on">✅ ${ms.reached.l} 到達</span>`
+      : '';
+    // 2026-09-17 竹中要望「細かい部分がわかりづらい／単価を意識させたい」
+    // → 着地予測・昨年同月・自己ベスト・次のマイルストーン行を廃止し、①個人の単価 ②損益分岐(120万)までの差分 ③単価を上げた場合の効果 の3行に
+    const unit = kpiNum(r[9]);                       // 個人ランキングタブ J列＝単価（売上÷のべ担当）
+    const unitGoal = (CONFIG.FOCUS && CONFIG.FOCUS.TANKA_GOAL) || 5000;
+    const ken = unit > 0 ? Math.round(sales / unit) : 0;   // 今月ののべ担当数
+    const unitSig = unit >= unitGoal ? '🟢' : (unit >= unitGoal * 0.8 ? '🟡' : '🔴');
+    const tankaLine = unit > 0
+      ? `<div class="ms-tanka">単価 <b>${yenFmt(unit)}</b> ${unitSig} <span>目標 ${yenFmt(unitGoal)}${ken ? `・のべ ${ken}人` : ''}</span></div>`
+      : `<div class="ms-tanka">単価 <b>—</b> <span>目標 ${yenFmt(unitGoal)}</span></div>`;
+    const BE = CONFIG.KPI.MILESTONES.find(m => m.note === '損益分岐') || { v: 1200000, l: '120万' };
+    const remainDays = prog ? Math.max(0, prog.total - prog.elapsed) : 0;
+    let gapLine = '';
+    if (sales >= BE.v) {
+      gapLine = `<div class="kpi-need">✅ ${BE.l}（損益分岐）達成 <b>+${yenFmt(sales - BE.v)}</b></div>`;
     } else {
-      const remainDays = prog ? Math.max(0, prog.total - prog.elapsed) : 0;
-      const gap = ms.next.v - sales;
+      const gap = BE.v - sales;
       const perDay = remainDays > 0 ? Math.ceil(gap / remainDays) : 0;
-      nextLine = `<div class="kpi-need">次は <b>${ms.next.l}</b>${ms.next.note ? '（' + ms.next.note + '）' : ''}：あと ${yenFmt(gap)}${remainDays > 0 ? ` → <b>1日 ${yenFmt(perDay)}</b>` : ''}</div>`;
+      const ppl = (unit > 0 && perDay > 0) ? `＝ いまの単価で <b>約${Math.ceil(perDay / unit)}人/日</b>` : '';
+      gapLine = `<div class="kpi-need">${BE.l}まで あと <b>${yenFmt(gap)}</b>${remainDays > 0 ? `<br>残り${remainDays}日 → 1日 <b>${yenFmt(perDay)}</b> ${ppl}` : ''}</div>`;
     }
-    let fcLine = '';
-    if (ms.fc > 0) {
-      const fcMs = personMilestone(ms.fc, null);
-      const landing = fcMs.reached ? `＝ <b>${fcMs.reached.l}</b> 到達見込み` : '';
-      fcLine = `<div class="kpi-card-sub">着地予測 <b>${yenFmt(ms.fc)}</b> ${landing}</div>`;
+    let leverLine = '';
+    if (unit > 0 && unit < unitGoal && ken > 0) {
+      leverLine = `<div class="ms-lever">単価を ${yenFmt(unitGoal)} にすると <b>+${yenFmt((unitGoal - unit) * ken)}</b>（のべ${ken}人 × +${yenFmt(unitGoal - unit)}）</div>`;
     }
-    // 過去の自分との比較（昨年同月・自己ベスト）
-    const ly = personLastYear(staff);
-    const best = personBest(staff);
-    let histLine = '';
-    if (ly && ms.fc > 0) histLine += `<div class="kpi-card-sub">昨年同月の自分 ${yenFmt(ly)} → 昨対 <b>${Math.round(ms.fc / ly * 100)}%</b>${ms.fc >= ly ? ' 🎉' : ''}</div>`;
-    if (best) histLine += `<div class="kpi-card-sub">自己ベスト ${yenFmt(best.v)}（${best.ym}）${ms.fc >= best.v ? ' → <b>更新ペース 🔥</b>' : ''}</div>`;
     cards.push(`
       <div class="kpi-card budget-${ms.band} ms-card">
         <div class="kpi-card-label">${escHtml(staff)} ${reachedLine}</div>
         <div class="kpi-card-big">${yenFmt(sales)} <span class="kpi-card-unit">${sig}</span></div>
         ${milestoneBarHtml(sales, ms)}
-        ${fcLine}
-        ${histLine}
-        ${nextLine}
+        ${tankaLine}
+        ${gapLine}
+        ${leverLine}
       </div>`);
   }
   if (cards.length === 0) return '';
