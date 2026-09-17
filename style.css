@@ -475,6 +475,10 @@ body {
 .pc-diagonal-label { font-size: 11px; fill: #94a3b8; font-weight: 600; }
 .pc-refline { stroke: #b45309; stroke-width: 1.2; stroke-dasharray: 3 4; }
 .pc-reflabel { font-size: 11px; fill: #b45309; font-weight: 600; }
+/* 損益分岐ライン（2026-09-17）: 赤の太め点線 */
+.pc-refline.be { stroke: #dc2626; stroke-width: 1.8; stroke-dasharray: 8 4; }
+.pc-reflabel.be { fill: #dc2626; font-size: 12px; font-weight: 700; }
+.pc-legend-be { display: inline-block; width: 18px; height: 0; border-top: 2px dashed #dc2626; }
 .pc-line { fill: none; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
 .pc-proj { stroke-width: 2; stroke-dasharray: 4 5; opacity: 0.75; }
 .pc-endlabel { font-size: 13px; font-weight: 700; }

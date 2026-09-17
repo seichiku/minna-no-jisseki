@@ -181,6 +181,20 @@ function readBundle_(forceRefresh) {
           // 朝の仕込みはメールアドレス等を落とし、日付/担当者/役割/【宣言】列だけ返す
           if (id === ASA_ID) grid = slimAsa_(grid);
         }
+        // 2026-09-17: 構築GASが分析シートのタブを削除→再作成→書き込み中（毎時 refreshHourly ／ 13・21時 refreshDaily）に
+        // 読むと空や途中の表になる。キャッシュ済みより行数が半分未満に減った分析シートのタブは採用せず、前回の表を保つ（次の5分で拾う）。
+        if (forceRefresh && id === ANALYSIS_ID) {
+          var prevHit = cacheSvc.get(ck);
+          if (prevHit != null) {
+            var prevObj = JSON.parse(prevHit);
+            var prevRows = (prevObj.g || []).length, newRows = (grid || []).length;
+            if (prevRows >= 4 && newRows < prevRows * 0.5) {
+              sheets[key] = prevObj.g; __readAt[key] = prevObj.t;   // キャッシュは延長しない＝万一本当に縮んだ表でもTTL(10分)後には新しい表を採用
+              Logger.log('再生成中とみなし前回値を維持: ' + name + ' rows ' + prevRows + '→' + newRows);
+              break;
+            }
+          }
+        }
         sheets[key] = grid;
         __readAt[key] = new Date().getTime();
         try { cacheSvc.put(ck, JSON.stringify({ g: grid, t: __readAt[key] }), CACHE_TTL_SEC); } catch (ignore) {}

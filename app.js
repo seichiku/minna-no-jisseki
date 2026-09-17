@@ -6,16 +6,19 @@
 let __bundle = null;    // 中継APIから取得したシート束 { "<id>|<name>": [[...]] }
 let __readAt = {};      // 中継APIが各シートを実際に読んだ時刻(ms) { "<id>|<name>": 1726...  }（2026-09-14）
 
-// ヒーローの「データ取得 HH:MM」＝束の中で一番古い取得時刻（中継APIは5分おきに温め直す）
+// ヒーローの「売上データ更新」＝分析シート「日次達成」タブの見出しにある更新時刻（構築GASが日計表から集計した時刻。
+// 2026-09-17: 8〜22時台は毎時更新）。見出しに時刻が無い旧形式なら、中継APIがシートを読んだ時刻で代用。
 function renderDataFresh() {
   const el = document.getElementById('dataFresh');
   if (!el) return;
+  const title = (kpiDaily && kpiDaily[0] && kpiDaily[0][0]) ? String(kpiDaily[0][0]) : '';
+  const m = title.match(/更新\s*(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/);
+  if (m) { el.textContent = `📡 売上データ更新 ${m[1]}/${m[2]} ${m[3].padStart(2, '0')}:${m[4]}`; return; }
   const ts = Object.values(__readAt || {}).map(Number).filter(n => n > 0);
   if (!ts.length) { el.textContent = ''; return; }
   const oldest = new Date(Math.min.apply(null, ts));
   const hh = String(oldest.getHours()).padStart(2, '0'), mm = String(oldest.getMinutes()).padStart(2, '0');
-  const md = (oldest.getMonth() + 1) + '/' + oldest.getDate();
-  el.textContent = `📡 データ取得 ${md} ${hh}:${mm}（各シートから5分おきに自動取得）`;
+  el.textContent = `📡 データ取得 ${oldest.getMonth() + 1}/${oldest.getDate()} ${hh}:${mm}`;
 }
 let caseRecords = [];   // 患者単位（1日報3患者を展開）
 let dailyRecords = [];  // 日報単位（喜びの声・症状カテゴリ集計用）
@@ -163,10 +166,10 @@ async function loadAllData(credential) {
 
     __bundle = data.sheets || {};
     __readAt = data.readAt || {};
-    renderDataFresh();   // データ取得時刻（信頼性の可視化 2026-09-14）
 
     // 2026-08-28: loadCaseData（旧日報）は廃止＝中継APIから旧日報3シートを外し高速化
     await Promise.all([loadKpiData(), loadPersonalRanking()]);
+    renderDataFresh();   // 売上データの更新時刻（日次達成タブの見出しから。信頼性の可視化 2026-09-14）
     renderKpi();
     renderPersonalRanking();
     logView('チーム実績');   // 初期表示タブもアクセスログに記録（2026-08-26）
@@ -833,6 +836,24 @@ function companyPace() {
   };
 }
 
+// 損益分岐額（2026-09-17 竹中指示: 3店舗合計 688万円）
+// 全社 = CONFIG.KPI.BREAK_EVEN.TOTAL。院別 = CLINICS に設定があればその値、無ければ TOTAL を月予算比で按分（est=true）
+function breakEvenCompany() {
+  const be = CONFIG.KPI.BREAK_EVEN || {};
+  return be.TOTAL > 0 ? be.TOTAL : null;
+}
+function breakEvenOf(name) {
+  const be = CONFIG.KPI.BREAK_EVEN || {};
+  const fixed = be.CLINICS && be.CLINICS[name];
+  if (fixed > 0) return { v: fixed, est: false };
+  if (!(be.TOTAL > 0)) return null;
+  const parts = CONFIG.KPI.CLINICS.map(c => ({ c, p: clinicPace(c) })).filter(x => x.p);
+  const total = parts.reduce((s, x) => s + x.p.budget, 0);
+  const me = parts.find(x => x.c === name);
+  if (!total || !me) return null;
+  return { v: Math.round(be.TOTAL * me.p.budget / total), est: true };
+}
+
 // 'YYYY-MM' キー（offsetMonths ヶ月ずらし）
 function ymKey(offsetMonths) {
   const d = new Date();
@@ -956,7 +977,7 @@ function companyCumSeries() {
 
 // SVGペースチャート（依存ライブラリなし）
 // seriesList: [{name, color, points:[{x,y}], proj:{x,y}|null, endLabel}]
-// opts: {refLines:[{y,label}], height}
+// opts: {refLines:[{y,label,cls}], height}  cls='be' なら損益分岐（赤の点線）
 function paceChartSvg(seriesList, opts) {
   opts = opts || {};
   const W = 640, H = opts.height || 330, L = 44, R = 14, T = 14, B = 28;
@@ -982,10 +1003,15 @@ function paceChartSvg(seriesList, opts) {
   // 予算ペースの対角線
   svg += `<line x1="${px(0)}" y1="${py(0)}" x2="${px(100)}" y2="${py(100)}" class="pc-diagonal"/>`;
   svg += `<text x="${px(72)}" y="${py(72) - 8}" class="pc-diagonal-label" text-anchor="middle">予算ペース</text>`;
-  // 参照線（昨年着地など）
-  (opts.refLines || []).forEach(rl => {
-    svg += `<line x1="${L}" y1="${py(rl.y)}" x2="${W - R}" y2="${py(rl.y)}" class="pc-refline"/>`;
-    svg += `<text x="${W - R}" y="${py(rl.y) - 5}" class="pc-reflabel" text-anchor="end">${rl.label}</text>`;
+  // 参照線（損益分岐・昨年着地など）。ラベルが近いときは上下にずらす
+  const rls = (opts.refLines || []).map(rl => ({ rl, ly: py(rl.y) - 5 })).sort((a, b) => a.ly - b.ly);
+  for (let i = 1; i < rls.length; i++) {
+    if (rls[i].ly - rls[i - 1].ly < 14) rls[i].ly = rls[i - 1].ly + 14;
+  }
+  rls.forEach(o => {
+    const rl = o.rl, cls = rl.cls ? ' ' + rl.cls : '';
+    svg += `<line x1="${L}" y1="${py(rl.y)}" x2="${W - R}" y2="${py(rl.y)}" class="pc-refline${cls}"/>`;
+    svg += `<text x="${W - R}" y="${o.ly}" class="pc-reflabel${cls}" text-anchor="end">${rl.label}</text>`;
   });
   // 系列
   const endLabels = [];
@@ -1081,6 +1107,8 @@ function renderKpiPaceChart() {
   if (!s || !cp) { el.innerHTML = `<div class="kpi-note">日次データが溜まると表示されます。</div>`; return; }
   const COMPANY_COLOR = '#1f3864';
   const refLines = [];
+  const be = breakEvenCompany();
+  if (be && cp.budget) refLines.push({ y: be / cp.budget * 100, label: `損益分岐 ${yenFmt(be)}`, cls: 'be' });
   const lySum = CONFIG.KPI.CLINICS.reduce((sum, c) => sum + (clinicLastYear(c) || 0), 0);
   if (lySum > 0 && cp.budget) refLines.push({ y: lySum / cp.budget * 100, label: `昨年着地 ${yenFmt(lySum)}` });
   const svg = paceChartSvg([{
@@ -1091,8 +1119,8 @@ function renderKpiPaceChart() {
   }], { refLines });
   const legend =
     `<span class="pc-legend-item"><i style="background:${COMPANY_COLOR}"></i>全社（3店舗合計）</span>` +
-    `<span class="pc-legend-item"><i class="pc-legend-proj"></i>点線＝現ペースの着地予測</span>` +
-    `<span class="pc-legend-item">院別チャートは各院ページへ</span>`;
+    `<span class="pc-legend-item"><i class="pc-legend-proj"></i>点線＝着地予測</span>` +
+    (be ? `<span class="pc-legend-item"><i class="pc-legend-be"></i>損益分岐 ${yenFmt(be)}（3店舗）</span>` : '');
   el.innerHTML = svg + `<div class="pc-legend">${legend}</div>`;
 }
 
@@ -1188,7 +1216,6 @@ function rihanListHtml(clinicName) {
   return `
     <div class="kpi-block">
       <h3 class="kpi-h">離客フォローリスト<span class="kpi-tag live">LIVE</span></h3>
-      <p class="section-desc" style="margin:0 0 10px;">カッコ内＝最終来院からの日数。声かけ対象。</p>
       <div class="rihan-lists">
         <div class="rihan-col">
           <div class="rihan-col-head">1ヶ月離客 <span class="rihan-range">最終来院30〜59日</span><b>${b.m1.length}名</b></div>
@@ -1298,7 +1325,7 @@ function forecastHtml(name) {
         <div class="kpi-bar"><div class="kpi-bar-fill ${band}" style="width:${Math.min(100, Math.max(0, p.fcPct))}%"></div></div>
         <div class="kpi-card-sub">${needLine}</div>
         ${lyLine}
-        <div class="kpi-card-sub" style="opacity:.7">経過 ${p.elapsed}/${p.total} 診療日・毎日13/21時更新</div>
+        <div class="kpi-card-sub" style="opacity:.7">経過 ${p.elapsed}/${p.total} 診療日</div>
       </div>
     </div>`;
 }
@@ -1357,6 +1384,8 @@ function clinicChartHtml(name) {
   const p = clinicPace(name);
   if (!s || !p) return '';
   const refLines = [];
+  const be = breakEvenOf(name);
+  if (be && p.budget) refLines.push({ y: be.v / p.budget * 100, label: `損益分岐 ${yenFmt(be.v)}`, cls: 'be' });
   const ly = clinicLastYear(name);
   if (ly && p.budget) refLines.push({ y: ly / p.budget * 100, label: `昨年着地 ${yenFmt(ly)}` });
   const svg = paceChartSvg([{
@@ -1365,11 +1394,14 @@ function clinicChartHtml(name) {
     proj: { x: 100, y: p.fcPct },
     endLabel: `いま ${Math.round(s.last.y)}%`,
   }], { refLines });
+  const legend =
+    `<span class="pc-legend-item"><i style="background:${CLINIC_COLORS[name]}"></i>${name}院</span>` +
+    `<span class="pc-legend-item"><i class="pc-legend-proj"></i>点線＝着地予測</span>` +
+    (be ? `<span class="pc-legend-item"><i class="pc-legend-be"></i>損益分岐 ${yenFmt(be.v)}${be.est ? '（3店舗688万円を予算比で按分）' : ''}</span>` : '');
   return `
     <div class="kpi-block">
       <h3 class="kpi-h">ペースチャート<span class="kpi-tag live">LIVE</span></h3>
-      <p class="section-desc" style="margin:0 0 10px;">100%＝月予算 ${yenFmt(p.budget)}。色の点線＝着地予測。</p>
-      <div class="pace-chart-wrap">${svg}</div>
+      <div class="pace-chart-wrap">${svg}<div class="pc-legend">${legend}</div></div>
     </div>`;
 }
 
@@ -1460,7 +1492,6 @@ function clinicPersonalHtml(name) {
   return `
     <div class="kpi-block">
       <h3 class="kpi-h">個人のマイルストーン（この院）<span class="kpi-tag live">LIVE</span></h3>
-      <p class="section-desc" style="margin:0 0 10px;">色＝現ペースで次の段に届くか（🟢届く/🟡あと少し/🔴要ペースアップ）。</p>
       <div class="kpi-cards ms-cards">${cards.join('')}</div>
     </div>`;
 }
@@ -1517,7 +1548,6 @@ function renderClinicPages() {
     el.innerHTML = hero + focusKpiHtml(name) + declVsActHtml(name) + forecastHtml(name) + clinicChartHtml(name) + `
       <div class="kpi-block">
         <h3 class="kpi-h">日次達成（毎日の予算達成）<span class="kpi-tag live">LIVE</span></h3>
-        <p class="section-desc" style="margin:0 0 10px;">当日売上÷日割予算。🟢100〜/🟡80〜99/🔴〜79。空欄＝休診/未到来。</p>
         <div class="daily-row">${dailyStripHtml(name) || '<div class="kpi-note">日次データなし</div>'}</div>
       </div>` + clinicPersonalHtml(name) + `
       <div class="kpi-block">
@@ -2092,7 +2122,6 @@ function declVsActHtml(name) {
   return `
     <div class="kpi-block">
       <h3 class="kpi-h">今日のアクション（宣言 vs 実行）<span class="kpi-tag live">LIVE</span></h3>
-      <p class="section-desc" style="margin:0 0 10px;">宣言（朝の仕込み）× 実行（各自の育成シート「戦術記録」）。目標/月＝転換${G.tenkan}・LINE${G.line}・ロープレ${G.rope}・鍛錬${G.tanren}（1人）。名前を押すと自分の育成シートが開きます。</p>
       ${note}
       <div class="flow-table-wrap"><table class="flow-table">
         <thead><tr><th>施術者</th><th>今日の宣言</th><th>昨日（宣言 → 実行）</th><th>当月実行 / 目標</th></tr></thead>
@@ -2192,7 +2221,6 @@ function renderPersonalRanking() {
       <td>${kpiDisp(r[8])}</td>
     </tr>`;
   });
-  html += `</tbody></table></div>
-    <p class="section-desc" style="margin-top:12px;">※色＝現ペースで次のマイルストーンに届くか。昇給＝個人120万＋院予算達成。</p>`;
+  html += `</tbody></table></div>`;
   el.innerHTML = html;
 }
