@@ -1609,26 +1609,17 @@ function renderKpiBudget() {
     if (!p) return;
     const band = paceBand(p.pacePct);
     const w = Math.min(100, Math.max(0, p.pacePct));
-    const gapLine = p.gap >= 0
-      ? `<span class="pace-chip plus">貯金 +${yenFmt(p.gap)}</span>`
-      : `<span class="pace-chip minus">巻き返し ${yenFmt(p.gap)}</span>`;
-    const ly = clinicLastYear(name);
-    const lyLine = ly
-      ? `<div class="kpi-card-sub">昨年同月 ${yenFmt(ly)} → 着地予測は昨対 <b>${Math.round(p.forecast / ly * 100)}%</b></div>`
-      : '';
-    let needLine;
-    if (p.actual >= p.budget) needLine = `<div class="kpi-need">予算達成済み 💪</div>`;
-    else if (p.remainDays === 0) needLine = `<div class="kpi-need">今月の診療日は終了</div>`;
-    else needLine = `<div class="kpi-need">残り<b>${p.remainDays}</b>診療日 → <b>1日 ${yenFmt(p.needPerDay)}</b>で100%<span class="kpi-need-note">${needAsPatients(name, p.needPerDay)}</span></div>`;
+    // 2026-09-17 竹中指示「細かい説明はなし」: 着地予測・昨年・残り日数・1日必要額・貯金チップを廃止。個人カードと同じ3行（予算/現在/あと）
+    const gap = p.budget - p.actual;
     cards.push(`
-    <div class="kpi-card budget-${band}">
-      <div class="kpi-card-label">${name}</div>
-      <div class="kpi-card-big">ペース ${p.pacePct}% <span class="kpi-card-unit">${paceSig(p.pacePct)}</span></div>
+    <div class="kpi-card budget-${band} ms-card">
+      <div class="kpi-card-label">${name}<span class="pb-head">${paceSig(p.pacePct)} ペース ${p.pacePct}%</span></div>
       <div class="kpi-bar"><div class="kpi-bar-fill ${band}" style="width:${w}%"></div></div>
-      <div class="kpi-card-sub">実績 ${yenFmt(p.actual)} ／ 今日までの予定 ${yenFmt(p.paceTarget)} ${gapLine}</div>
-      <div class="kpi-card-sub">着地予測 <b>${yenFmt(p.forecast)}</b>（予算 ${yenFmt(p.budget)} の ${p.fcPct}%）</div>
-      ${lyLine}
-      ${needLine}
+      <div class="pb-row"><span>予算</span><b>${yenFmt(p.budget)}</b></div>
+      <div class="pb-row"><span>現在</span><b>${yenFmt(p.actual)}</b><em>予算比 ${Math.round(p.actual / p.budget * 100)}%</em></div>
+      ${gap > 0
+        ? `<div class="pb-gap">予算まで あと <b>${yenFmt(gap)}</b></div>`
+        : `<div class="pb-gap done">予算達成 <b>+${yenFmt(-gap)}</b></div>`}
     </div>`);
   });
   el.innerHTML = cards.length ? cards.join('') : `<div class="kpi-note">データが溜まると表示されます。</div>`;
