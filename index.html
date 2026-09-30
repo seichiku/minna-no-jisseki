@@ -6,7 +6,7 @@
 <title>みんなの実績</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20260917e">
+<link rel="stylesheet" href="style.css?v=20260930a">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -32,16 +32,17 @@
       <div class="hero-logo">成</div>
       <div class="hero-text">
         <h1>みんなの実績</h1>
-        <p>今日、予定のペースに乗れているか</p>
+        <p>稼働率とコマ単価、今日の行動</p>
       </div>
       <div class="user-info" id="userInfo"></div>
     </div>
-    <!-- 朝1分の使い方（2026-08-27 ループ連動） -->
+    <!-- 毎日の流れ（2026-09-30 朝夜フォームに整合） -->
     <div class="guide-strip">
-      <span class="guide-title">☀️ 朝1分の見方</span>
-      <span class="guide-steps">① 院ページで宣言vs実行を見る → ② 朝の仕込みに回答 → ③ 実行は当日中に自分の育成シート「戦術記録」へ</span>
+      <span class="guide-title">☀️ 毎日の流れ</span>
+      <span class="guide-steps">① 院ページで自分の稼働率・コマ単価を見る → ② 朝の仕込みで今日試すことを決める → ③ 夜は日報に結果と次の修正を書く</span>
       <span class="guide-fresh" id="dataFresh"></span>
-      <a class="dv-btn" href="https://docs.google.com/forms/d/e/1FAIpQLScNDzV3os7TQpv2ynbrQQuHZZZLerm3RF6ykZpuELBU4FstWQ/viewform" target="_blank" rel="noopener">朝の仕込みに回答する</a>
+      <a class="dv-btn" href="https://docs.google.com/forms/d/e/1FAIpQLScNDzV3os7TQpv2ynbrQQuHZZZLerm3RF6ykZpuELBU4FstWQ/viewform" target="_blank" rel="noopener">☀️ 朝の仕込み</a>
+      <a class="dv-btn" href="https://docs.google.com/forms/d/e/1FAIpQLSd19MykGfDRz6PpeqhjXEQGglWvaP4rJfDUBeAjvljNS1Gfjw/viewform" target="_blank" rel="noopener">🌙 日報（施術スタッフ）</a>
     </div>
   </div>
 
@@ -71,29 +72,33 @@
     <!-- ① 全社ヒーロー（着地予測） -->
     <div id="kpiHero"></div>
 
-    <!-- ② ペースチャート -->
-    <div class="kpi-block">
-      <h3 class="kpi-h">ペースチャート（全社・3店舗合計）<span class="kpi-tag live">LIVE</span></h3>
-      <div id="kpiPaceChart" class="pace-chart-wrap"></div>
-    </div>
-
-    <!-- ③ 院別ペース -->
+    <!-- ② 院別ペース（予算・現在・差） -->
     <div class="kpi-block">
       <h3 class="kpi-h">院別ペース（今日までの予定額との差）<span class="kpi-tag live">LIVE</span></h3>
       <div class="kpi-cards" id="kpiBudget"></div>
     </div>
 
-    <!-- ④ 当月フロー指標 -->
-    <div class="kpi-block">
-      <h3 class="kpi-h">当月フロー指標<span class="kpi-tag live">LIVE</span></h3>
-      <div id="kpiFlowTable"></div>
-    </div>
+    <div class="kpi-note" style="margin-bottom:22px;">個人の稼働率・コマ単価（日次）は、各院ページの一番上にあります。</div>
 
-    <!-- ⑤ 先行指標 -->
-    <div class="kpi-block">
-      <h3 class="kpi-h">先行指標（助け合い・行動の質）</h3>
-      <div class="kpi-cards" id="kpiLeading"></div>
-    </div>
+    <!-- 2026-09-30: 推移・補助指標・件数の記録は詳細に畳む（毎日の主表示は 2指標 → 今日の行動 → 結果） -->
+    <details class="more">
+      <summary>推移・補助指標・件数の記録を見る</summary>
+
+      <div class="kpi-block">
+        <h3 class="kpi-h">ペースチャート（全社・3店舗合計）<span class="kpi-tag live">LIVE</span></h3>
+        <div id="kpiPaceChart" class="pace-chart-wrap"></div>
+      </div>
+
+      <div class="kpi-block">
+        <h3 class="kpi-h">当月フロー指標<span class="kpi-tag live">LIVE</span></h3>
+        <div id="kpiFlowTable"></div>
+      </div>
+
+      <div class="kpi-block">
+        <h3 class="kpi-h">件数の記録（転換・LINE・練習・口コミ）</h3>
+        <div class="kpi-cards" id="kpiLeading"></div>
+      </div>
+    </details>
   </div>
 
   <!-- ====== 各院ページ（南砂/塩浜/東砂） ====== -->
@@ -145,8 +150,8 @@
   <div class="footer">&copy; 2026 みんなの実績（社内限定）</div>
 </div>
 
-<script src="config.js?v=20260917e"></script>
-<script src="history.js?v=20260917e"></script>
-<script src="app.js?v=20260917e"></script>
+<script src="config.js?v=20260930a"></script>
+<script src="history.js?v=20260930a"></script>
+<script src="app.js?v=20260930a"></script>
 </body>
 </html>

@@ -140,23 +140,18 @@ const CONFIG = {
       TOTAL: 6880000,
       CLINICS: { '南砂': null, '塩浜': null, '東砂': null },
     },
-    // 個人売上の段階マイルストーン（30万刻み→損益分岐120万→ストレッチ150万）
-    MILESTONES: [
-      { v: 300000, l: '30万' },
-      { v: 600000, l: '60万' },
-      { v: 900000, l: '90万' },
-      { v: 1200000, l: '120万', note: '損益分岐' },
-      { v: 1350000, l: '135万' },
-      { v: 1500000, l: '150万', note: '余剰30万' },
-    ],
+    // 個人の日次2指標（各院ページ上部 2026-09-30）。元データ＝分析シート「個人日次」タブ（構築GASが毎時集計）
+    PD_TAB: '個人日次',
+    PD_GOAL: { rate: 80, unit: 2000 },   // 目安：稼働率80%・コマ単価¥2,000
   },
 
   // ============================================================
-  // 戦術記録×朝の宣言（2026-08-27 ループ連動 → 2026-09-14 入力先を各自の育成シートへ）
+  // 行動の入口と件数の記録（2026-08-27 ループ連動 → 2026-09-14 入力先を各自の育成シートへ → 2026-09-30 朝夜フォームに整合）
   // 実行＝各自の育成シート「戦術記録」タブ（1行=1アクション・種別プルダウン）。
   //   中継APIが全員分を統合し、互換キー "TAC_ID|行動ログ" で返す（旧戦術ダッシュボードは2026-09-09廃止）。
-  // 宣言＝朝の仕込みフォーム（転換のフリーテキスト・ロープレ/鍛錬のやる宣言）。
-  // LPは両方を突合して「昨日の宣言 vs 実行」「先行指標の内訳」をライブ表示する。
+  // 朝＝朝の仕込みフォーム（今日試すこと）、夜＝日報フォーム（施術スタッフ・結果と次の修正）、技術の返答＝育成シート。
+  // 2026-10-01の設問改定で朝の件数宣言（転換数・ロープレ・鍛錬）が無くなったため、「宣言 vs 実行」の表示は外した。
+  // 戦術記録の件数は「詳細」に表示する（日報の実行チェックを件数の正本として使わない）。
   // ============================================================
   ACTIONS: {
     TAC_ID: '1Xwdlni7dCWkeFGu5NSvuwzTxMbCni5aR7Pdqm_zhFg8',  // 互換キー用（旧戦術ダッシュボードのID。中継APIはこのキーで育成シート統合を返す）
@@ -176,10 +171,8 @@ const CONFIG = {
       '田村': 'https://docs.google.com/spreadsheets/d/1Fgx8btAiWCoOpFsO7AmHpWdqbmXao-HxOiTvrBgPp64/edit',
       '栗田': 'https://docs.google.com/spreadsheets/d/1_74VwPTjpctG1AxWLBegq0Rp5xAbjcghOixHMHZvJdc/edit',
     },
-    ASA_ID: '1xRXcMz1DzWUjvDZkZ2Jgoq9F_OewgKiTYyU4cKvA1ZM',  // 朝の仕込みDB
-    ASA_SHEET: '2026/8/28~',   // 2026-08-27 質問改定で新シート化（日付入り名。質問改定ごとに紐づけ直し→新タブ名に更新）
-    ASA_COL: { date: 2, staff: 3 },  // 【宣言】列はヘッダー文字列から動的検出
-    FORM_URL: 'https://docs.google.com/forms/d/e/1FAIpQLScNDzV3os7TQpv2ynbrQQuHZZZLerm3RF6ykZpuELBU4FstWQ/viewform',
+    FORM_URL: 'https://docs.google.com/forms/d/e/1FAIpQLScNDzV3os7TQpv2ynbrQQuHZZZLerm3RF6ykZpuELBU4FstWQ/viewform',   // 朝の仕込み（朝・全役割）
+    NIPPO_URL: 'https://docs.google.com/forms/d/e/1FAIpQLSd19MykGfDRz6PpeqhjXEQGglWvaP4rJfDUBeAjvljNS1Gfjw/viewform',  // 日報｜施術スタッフ（夜・2026-09-30新設）
     LOG_URL: 'https://drive.google.com/drive/folders/1jzv1C26dVzRh_caepmG4kDEJ6If4OgQE',  // 育成シートの親フォルダ（新人育成（Practice））。本人リンクは IKUSEI_URLS
     GOAL_TENKAN: 300,   // 転換提案 全社/月（戦術タブF列が取れない時のフォールバック）
     // 1人あたり月目標（2026-08-27 竹中決定。スタッフは月8休み＝出勤22日）
@@ -191,10 +184,8 @@ const CONFIG = {
     },
   },
 
-  // 今月の院テーマ（2026-08-27 竹中指示）
-  // 南砂・東砂＝客単価を¥5,000超へ／塩浜＝新再診（初再診）の通院頻度を月4回へ
+  // 院テーマ（2026-08-27 竹中指示）。2026-09-30: 客単価¥5,000の表示は削除。塩浜の通院頻度（月4回）だけ詳細に残す
   FOCUS: {
-    TANKA_GOAL: 5000,
     FREQ_GOAL: 4,
   },
 

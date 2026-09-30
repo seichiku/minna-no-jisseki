@@ -583,3 +583,29 @@ body {
 .dv-none { color: #c2410c; font-weight: 700; }
 .dv-muted { color: var(--text-light); }
 .dv-detail { font-size: 11px; color: var(--text-light); }
+
+/* ===== 個人の日次2指標・今日の行動・詳細の折りたたみ（2026-09-30） ===== */
+.pd-goal { font-size: 12px; font-weight: 600; color: var(--text-light); }
+.pd-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 10px; font-size: 13px; color: var(--text-light); }
+.pd-bar label { font-weight: 700; color: var(--text); }
+.pd-bar select { font: inherit; font-size: 15px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: #fff; color: var(--text); }
+.flow-table.pd-table { min-width: 0; }
+.flow-table.pd-table th, .flow-table.pd-table td { white-space: normal; vertical-align: top; }
+.flow-table.pd-table td.ft-label { vertical-align: middle; white-space: nowrap; }
+.pd-val { display: block; font-size: 22px; font-weight: 800; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.pd-val.hit { color: #15803d; }
+.pd-val.none { color: #94a3b8; font-size: 18px; font-weight: 600; }
+.pd-sub { display: block; font-size: 11px; color: var(--text-light); margin-top: 2px; }
+.pd-note { font-size: 12px; color: var(--text-light); margin-top: 8px; line-height: 1.7; }
+.pd-today { background: #fff7e0; border: 1px solid #fde7d4; color: #92600a; border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-bottom: 10px; }
+.act-flow { font-size: 14px; margin: 0 0 4px; color: var(--text); }
+.act-sheets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; font-size: 13px; color: var(--text-light); }
+.act-sheets a { padding: 4px 12px; border: 1px solid var(--border); border-radius: 20px; background: #fff; color: var(--primary-dark); text-decoration: none; font-weight: 600; }
+.month-card { max-width: 420px; }
+details.more { margin: 4px 0 30px; }
+details.more > summary { cursor: pointer; font-weight: 700; font-size: 14px; color: var(--primary-dark); padding: 12px 14px; background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius); }
+details.more[open] > summary { margin-bottom: 20px; }
+@media (max-width: 600px) {
+  .pd-val { font-size: 19px; }
+  .flow-table.pd-table th, .flow-table.pd-table td { padding: 9px 8px; }
+}

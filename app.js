@@ -714,7 +714,7 @@ let kpiMaster = null;         // 顧客マスタ「顧客マスタ」grid（離�
 let kpiMasterError = false;   // 顧客マスタ共有エラー
 let kpiKuchikomi = null;      // 週次効果測定「GBP(3店舗)」grid（口コミ回収の現状 2026-08-22）
 let kpiActLog = null;         // 戦術ダッシュボード「行動ログ」grid（提案/LINE/ロープレの実行 2026-08-27）
-let kpiAsa = null;            // 朝の仕込みDB grid（今日の宣言 2026-08-27）
+let kpiPd = null;             // 分析シート「個人日次」grid（日別×院×施術者の実労働h・コマ・個人売上 2026-09-30）
 
 async function loadKpiData() {
   // ストック（会員名簿・回数券台帳）
@@ -768,18 +768,19 @@ async function loadKpiData() {
     console.warn('口コミ(週次GBP)読込失敗:', err);
     kpiKuchikomi = null;
   }
-  // 行動ログ×朝の宣言（取得できなくても他は出す 2026-08-27）
+  // 行動ログ（育成シート「戦術記録」の統合。取得できなくても他は出す 2026-08-27）
   try {
     kpiActLog = await fetchSheet(CONFIG.ACTIONS.TAC_ID, CONFIG.ACTIONS.LOG_SHEET);
   } catch (err) {
     console.warn('行動ログ読込失敗:', err);
     kpiActLog = null;
   }
+  // 個人日次（各院ページの日次 稼働率・コマ単価。取得できなくても他は出す 2026-09-30）
   try {
-    kpiAsa = await fetchSheet(CONFIG.ACTIONS.ASA_ID, CONFIG.ACTIONS.ASA_SHEET);
+    kpiPd = await fetchSheet(CONFIG.KPI.ANALYSIS_ID, CONFIG.KPI.PD_TAB);
   } catch (err) {
-    console.warn('朝の仕込み(宣言)読込失敗:', err);
-    kpiAsa = null;
+    console.warn('個人日次 読込失敗:', err);
+    kpiPd = null;
   }
 }
 
@@ -883,23 +884,6 @@ function personBest(name) {
   });
   return best;
 }
-// 院の当月客単価（現在着地÷のべ来院件数）→「1日あと◯人」換算に使う
-// 2026-08-20: フロータブの行名変更（患者数(今月)→総患者=のべ）。旧名はスナップショット互換のフォールバック。
-function clinicUnitPrice(name) {
-  const fActual = flowMetric('現在着地');
-  const fPat = flowMetric('総患者') || flowMetric('患者数(今月)');
-  if (!fActual || !fPat) return 0;
-  const a = kpiNum(fActual[name]), p = kpiNum(fPat[name]);
-  return p > 0 ? Math.round(a / p) : 0;
-}
-// 必要日額の「あと◯人」換算テキスト
-function needAsPatients(name, needPerDay) {
-  const unit = clinicUnitPrice(name);
-  if (!unit || !needPerDay) return '';
-  const n = Math.ceil(needPerDay / unit);
-  return `（客単価換算 約${n}人）`;
-}
-
 // 院の日次累積系列（日次達成タブの % × 日割予算 → 診療日ごとの累積）
 // → { points:[{x:経過%, y:予算進捗%}], last:{x,y} } / データ不足なら null
 function clinicCumSeries(name) {
@@ -1055,7 +1039,7 @@ function renderKpi() {
   renderKpiOrder();      // ストックタブ：オーダー回数券
   renderKpiChurn();      // ストックタブ：離脱（サブスク解約・回数券未更新 2026-08-26）
   renderKpiOpt();        // ストックタブ：オプションチケット（施術者別保有 2026-08-21）
-  renderClinicPages();   // 各院ページ（ペースチャート・日次達成・個人マイルストーン等）
+  renderClinicPages();   // 各院ページ（個人の日次2指標・今日の行動・今月の状況・フォローリスト・詳細）
 }
 
 // ① 全社ヒーロー：着地予測を主役に（「行けるかも」の起点）
@@ -1133,9 +1117,10 @@ function renderKpiFlowTable() {
   // 2026-08-14: 鍼灸受診率はチーム実績では非表示（各院ページで施術ベースを表示）→代わりにLTV
   // 2026-08-20: 全患者数=実人数／総患者=のべ（旧・患者数(今月)）。既存数は実人数ベースに変更
   // 2026-08-26: フロータブの表示範囲（全患者数〜LTV）を全て表示（竹中要望）
+  // 2026-09-30: 客単価・ベッド稼働率は表示しない（主指標＝個人の稼働率・コマ単価と混同しないため。分析シートには残る）
   const ROWS = ['全患者数', '総患者', '新患数', '再診数', '既存数', '事前予約(翌日計)',
-    '一人生産性', '客単価', '通院頻度(全患者)', '初再診 通院頻度',
-    '鍼灸受診率', '鍼灸受診率(施術ベース)', 'ベッド稼働率', '人員稼働数',
+    '一人生産性', '通院頻度(全患者)', '初再診 通院頻度',
+    '鍼灸受診率', '鍼灸受診率(施術ベース)', '人員稼働数',
     '新患リピ率', '再診リピ率', '既存リピ率', 'LTV'];
   const found = [];
   ROWS.forEach(label => {
@@ -1312,7 +1297,7 @@ function forecastHtml(name) {
     ? '今月の診療日は終了しました'
     : (p.actual >= p.budget
       ? '予算達成済み！このまま上積みを 💪'
-      : `予算まであと ${yenFmt(p.budget - p.actual)} ／ 残り${p.remainDays}診療日 → <b>1日あたり ${yenFmt(p.needPerDay)}</b> ${needAsPatients(name, p.needPerDay)}で達成`);
+      : `予算まであと ${yenFmt(p.budget - p.actual)} ／ 残り${p.remainDays}診療日 → <b>1日あたり ${yenFmt(p.needPerDay)}</b> で達成`);
   const ly = clinicLastYear(name);
   const lyLine = ly
     ? `<div class="kpi-card-sub">昨年同月 ${yenFmt(ly)} → 着地予測は昨対 <b>${Math.round(p.forecast / ly * 100)}%</b>${p.forecast >= ly ? ' 🎉 昨年超えペース' : ''}</div>`
@@ -1331,9 +1316,8 @@ function forecastHtml(name) {
     </div>`;
 }
 
-// 今月の院テーマ（2026-08-27 竹中指示で刷新）
-// 南砂・東砂＝客単価を¥5,000超へ／塩浜＝新再診（初再診）の通院頻度を月4回へ。
-// 数字はフロー（3院）タブ（毎日13/21時更新）から。
+// 院テーマ（2026-08-27 竹中指示）→ 2026-09-30: 客単価¥5,000のカードは削除。塩浜の通院頻度だけ「詳細」に残す。
+// 数字はフロー（3院）タブから。
 function focusKpiHtml(name) {
   const num = v => parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')) || 0;
   const sig = b => b === 'green' ? '🟢' : (b === 'yellow' ? '🟡' : '🔴');
@@ -1344,16 +1328,6 @@ function focusKpiHtml(name) {
       <div class="kpi-card-sub">${sub}</div>
     </div>`;
   const cards = [];
-  if (name === '南砂' || name === '東砂') {
-    const goal = (CONFIG.FOCUS && CONFIG.FOCUS.TANKA_GOAL) || 5000;
-    const t = flowMetric('客単価');
-    if (t && String(t[name] || '').trim() !== '' && t[name] !== '—') {
-      const v = num(t[name]);
-      const band = v >= goal ? 'green' : (v >= goal * 0.8 ? 'yellow' : 'red');
-      cards.push(cardHtml(band, `客単価（目標 ¥${goal.toLocaleString('ja-JP')}超）`, kpiDisp(t[name]),
-        `あと ¥${Math.max(0, goal - v).toLocaleString('ja-JP')}。打ち手＝オプ・回数券・サブの一言提案`));
-    }
-  }
   if (name === '塩浜') {
     const goal = (CONFIG.FOCUS && CONFIG.FOCUS.FREQ_GOAL) || 4;
     const f1 = flowMetric('初再診 通院頻度');
@@ -1374,7 +1348,7 @@ function focusKpiHtml(name) {
   if (!cards.length) return '';
   return `
     <div class="kpi-block">
-      <h3 class="kpi-h">今月の院テーマ<span class="kpi-tag live">LIVE</span></h3>
+      <h3 class="kpi-h">通院頻度（院テーマ）<span class="kpi-tag live">LIVE</span></h3>
       <div class="kpi-cards" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));">${cards.join('')}</div>
     </div>`;
 }
@@ -1406,36 +1380,7 @@ function clinicChartHtml(name) {
     </div>`;
 }
 
-// ── 個人マイルストーン（30万刻み→120万損益分岐→150万ストレッチ） ──
-// 個人の当月ペース情報（院の経過診療日を暫定利用）
-function personMilestone(sales, prog) {
-  const MS = CONFIG.KPI.MILESTONES;
-  const maxV = MS[MS.length - 1].v;
-  const next = MS.find(m => sales < m.v) || null;
-  let reached = null;
-  for (const m of MS) { if (sales >= m.v) reached = m; }
-  let fc = 0;
-  if (prog && prog.elapsed > 0 && prog.total > 0) fc = Math.round(sales / prog.elapsed * prog.total);
-  // 色分け＝現ペースの着地で「次のマイルストーン」に届くか
-  let band = 'red';
-  if (!next) band = 'green';
-  else if (fc >= next.v) band = 'green';
-  else if (fc >= next.v * 0.9) band = 'yellow';
-  return { MS, maxV, next, reached, fc, band };
-}
-
-// マイルストーンバー（目盛り付きプログレスバー）
-function milestoneBarHtml(sales, ms) {
-  const w = Math.min(100, sales / ms.maxV * 100);
-  const ticks = ms.MS.map(m => {
-    const left = m.v / ms.maxV * 100;
-    const on = sales >= m.v;
-    return `<span class="ms-tick ${on ? 'on' : ''}" style="left:${left}%" title="${m.l}${m.note ? '（' + m.note + '）' : ''}"><i></i><em>${m.l}</em></span>`;
-  }).join('');
-  return `<div class="ms-bar"><div class="ms-bar-fill band-${ms.band}" style="width:${w}%"></div>${ticks}</div>`;
-}
-
-// 各院ページの「個人のマイルストーン」ブロック（個人ランキングタブを所属院で絞り込み）
+// 各院ページの「個人予算」ブロック（個人ランキングタブを所属院で絞り込み。詳細の中に表示）
 function clinicPersonalHtml(name) {
   if (kpiPersonalError || !kpiPersonalGrid) return '';
   let hi = -1;
@@ -1457,10 +1402,6 @@ function clinicPersonalHtml(name) {
     // 個人予算＝個人ランキングタブ M列（各院日計表「スタッフマスタ」）。信号＝ペース比（実績 ÷ 今日までの予定額）で🟢100/🟡90〜99/🔴〜89
     const budget = r.length > 12 ? kpiNum(r[12]) : 0;
     const hasBudgetCol = r.length > 12;
-    const unit = kpiNum(r[9]);                       // 単価（売上÷のべ担当）
-    const unitGoal = (CONFIG.FOCUS && CONFIG.FOCUS.TANKA_GOAL) || 5000;
-    const ken = unit > 0 ? Math.round(sales / unit) : 0;
-    const unitSig = unit >= unitGoal ? '🟢' : (unit >= unitGoal * 0.8 ? '🟡' : '🔴');
     let band = 'gray', head = '', body = '';
     if (budget > 0) {
       const paceTarget = (prog && prog.total > 0) ? Math.round(budget / prog.total * prog.elapsed) : 0;
@@ -1480,18 +1421,10 @@ function clinicPersonalHtml(name) {
         <div class="pb-row"><span>現在</span><b>${yenFmt(sales)}</b></div>
         <div class="pb-gap none">${hasBudgetCol ? '個人予算が未設定（日計表「スタッフマスタ」）' : '個人予算は次回更新後に表示'}</div>`;
     }
-    const tankaLine = unit > 0
-      ? `<div class="ms-tanka">単価 <b>${yenFmt(unit)}</b> ${unitSig} <span>目標 ${yenFmt(unitGoal)}・のべ ${ken}人</span></div>`
-      : '';
-    const leverLine = (unit > 0 && unit < unitGoal && ken > 0)
-      ? `<div class="ms-lever">単価を ${yenFmt(unitGoal)} にすると <b>+${yenFmt((unitGoal - unit) * ken)}</b></div>`
-      : '';
     cards.push(`
       <div class="kpi-card budget-${band} ms-card">
         <div class="kpi-card-label">${escHtml(staff)}<span class="pb-head">${head}</span></div>
         ${body}
-        ${tankaLine}
-        ${leverLine}
       </div>`);
   }
   if (cards.length === 0) return '';
@@ -1530,41 +1463,51 @@ function renderClinicPages() {
         <div class="kpi-card-big">${val} <span class="kpi-card-unit">${sig(band)}</span></div>
         <div class="kpi-card-sub">${sub}</div>
       </div>`;
-    // 院ヒーロー：当月実績＋ペース比（今日までの予定額に乗れているか）で色分け
+    // 2026-09-30 構成変更: 上＝個人の日次2指標 → 今日の行動 → 今月の状況（予算・現在・差の1ブロック）→ フォローリスト。
+    // 着地予測・ペースチャート・日次達成・個人予算・補助指標・件数の記録は「詳細」に畳む（元データと参照は維持）。
     const p = clinicPace(name);
-    const rB = p ? paceBand(p.pacePct) : 'red';
-    const gapChip = p
-      ? (p.gap >= 0
-        ? `<span class="pace-chip plus">貯金 +${yenFmt(p.gap)}</span>`
-        : `<span class="pace-chip minus">巻き返し ${yenFmt(p.gap)}</span>`)
-      : '';
-    const hero = `
-      <div class="clinic-hero band-${rB}">
-        <div class="clinic-hero-main">
-          <div class="clinic-hero-label">当月実績</div>
-          <div class="clinic-hero-value">${p ? yenFmt(p.actual) : '—'}</div>
-          <div class="clinic-hero-rate">ペース比 ${p ? p.pacePct + '%' : '—'} <span>${sig(rB)}</span> ${gapChip}</div>
-        </div>
-        <div class="clinic-hero-sub">
-          <div class="clinic-hero-item"><span>月次予算</span><b>${p ? yenFmt(p.budget) : '—'}</b></div>
-          <div class="clinic-hero-item"><span>日次予算</span><b>${p ? yenFmt(p.perDay) : '—'}</b></div>
-          <div class="clinic-hero-item"><span>今日までの予定</span><b>${p ? yenFmt(p.paceTarget) : '—'}</b></div>
+    let month;
+    if (p) {
+      const band = paceBand(p.pacePct);
+      const gap = p.budget - p.actual;
+      month = `
+      <div class="kpi-block">
+        <h3 class="kpi-h">今月の状況（院全体）<span class="kpi-tag live">LIVE</span></h3>
+        <div class="kpi-card budget-${band} ms-card month-card">
+          <div class="kpi-card-label">${name}院<span class="pb-head">${paceSig(p.pacePct)} ペース ${p.pacePct}%</span></div>
+          <div class="pb-row"><span>予算</span><b>${yenFmt(p.budget)}</b></div>
+          <div class="pb-row"><span>現在</span><b>${yenFmt(p.actual)}</b><em>予算比 ${Math.round(p.actual / p.budget * 100)}%</em></div>
+          ${gap > 0
+            ? `<div class="pb-gap">予算まで あと <b>${yenFmt(gap)}</b></div>`
+            : `<div class="pb-gap done">予算達成 <b>+${yenFmt(-gap)}</b></div>`}
         </div>
       </div>`;
-    el.innerHTML = hero + focusKpiHtml(name) + declVsActHtml(name) + forecastHtml(name) + clinicChartHtml(name) + `
+    } else {
+      month = `
+      <div class="kpi-block">
+        <h3 class="kpi-h">今月の状況（院全体）</h3>
+        <div class="kpi-note">今月の売上データが溜まると表示されます。</div>
+      </div>`;
+    }
+    const detail = forecastHtml(name) + clinicChartHtml(name) + `
       <div class="kpi-block">
         <h3 class="kpi-h">日次達成（毎日の予算達成）<span class="kpi-tag live">LIVE</span></h3>
         <div class="daily-row">${dailyStripHtml(name) || '<div class="kpi-note">日次データなし</div>'}</div>
-      </div>` + clinicPersonalHtml(name) + `
+      </div>` + clinicPersonalHtml(name) + focusKpiHtml(name) + `
       <div class="kpi-block">
-        <h3 class="kpi-h">月次指標<span class="kpi-tag live">LIVE</span></h3>
+        <h3 class="kpi-h">月次の補助指標<span class="kpi-tag live">LIVE</span></h3>
         <div class="kpi-cards">
           ${card(acuBand, '鍼灸受診率（施術ベース）', acu ? kpiDisp(acu[name]) : '—', '目標60%')}
           ${card(chBand, '離反率', churn ? kpiDisp(churn[name]) : '—', '目標8%以下')}
           ${card(chBand, '1ヶ月離反数', c1 ? kpiDisp(c1[name]) : '—', '')}
           ${card(chBand, '2ヶ月離反数', c2 ? kpiDisp(c2[name]) : '—', '')}
         </div>
-      </div>` + rihanListHtml(name);
+      </div>` + tacticsCountsHtml(name);
+    el.innerHTML = pdBlockHtml(name, idx) + actionLinksHtml(name) + month + rihanListHtml(name) + `
+      <details class="more">
+        <summary>月の推移・補助指標・件数の記録を見る</summary>
+        ${detail}
+      </details>`;
   });
 }
 
@@ -1903,10 +1846,9 @@ function kuchikomiCards() {
 }
 
 // ============================================================
-// 行動ログ×朝の宣言（2026-08-27 ループ連動）
-// 戦術ダッシュボード「行動ログ」＝実行（1行=1アクション）、
-// 朝の仕込みフォーム＝宣言（オプション/オーダー/サブスク提案数）。
-// 突合して「昨日の宣言 vs 実行」を各院ページに表示する。
+// 行動ログ（2026-08-27 ループ連動 → 2026-09-30 整理）
+// 育成シート「戦術記録」＝件数の記録（1行=1アクション）。中継APIが全員分を統合して返す。
+// 朝の件数宣言との突合（宣言 vs 実行）は 2026-10-01 の設問改定で外した。
 // ============================================================
 function dateKeyOf(d) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -1976,68 +1918,6 @@ function actStats() {
   return (__actStatsCache = out);
 }
 
-// 転換宣言のフリーテキスト（例:「オプション3件・サブスク1件」）を数に分解する。
-// 種別キーワードが見つからなければ、文中の数字の合計を宣言数として扱う。
-function parseTenkanDecl(s) {
-  let t = String(s == null ? '' : s).trim();
-  if (t === '') return null;
-  t = t.replace(/[０-９]/g, d => '０１２３４５６７８９'.indexOf(d));   // 全角数字→半角
-  const num = re => { const m = t.match(re); return m ? parseInt(m[1], 10) || 0 : 0; };
-  const opt = num(/オプ[^0-9]{0,6}([0-9]+)/);
-  const order = num(/オーダー[^0-9]{0,6}([0-9]+)/) + num(/回数券[^0-9]{0,6}([0-9]+)/);
-  const sub = num(/サブ[^0-9]{0,6}([0-9]+)/) + num(/筋トレ[^0-9]{0,6}([0-9]+)/);
-  let total = opt + order + sub;
-  if (!total) {
-    const all = t.match(/[0-9]+/g);
-    total = all ? all.reduce((a, b) => a + parseInt(b, 10), 0) : 0;
-  }
-  return { text: t, total, opt, order, sub };
-}
-
-// 朝の仕込みの【宣言】列（ヘッダー文字列で動的検出）→ { '姓|yyyy-mm-dd': {tenkan,rope,tanren} }
-// tenkan=転換のフリーテキスト宣言（parseTenkanDecl済み）／rope・tanren=「やる」宣言（true/false/null）。
-// フォームの担当者はフルネーム（例: 植田祐司）なので姓に正規化して突合する。
-let __asaDeclsCache;
-function asaDecls() {
-  if (__asaDeclsCache !== undefined) return __asaDeclsCache;
-  if (!kpiAsa || kpiAsa.length < 2) return (__asaDeclsCache = null);
-  const head = kpiAsa[0] || [];
-  const cols = {};
-  for (let c = 0; c < head.length; c++) {
-    const h = String(head[c] || '');
-    if (h.indexOf('【宣言】') !== 0) continue;
-    if (h.includes('転換')) cols.tenkan = c;          // 統合宣言（例文にオプション等を含むため最優先で判定）
-    else if (h.includes('ロープレ')) cols.rope = c;
-    else if (h.includes('鍛錬')) cols.tanren = c;
-  }
-  if (cols.tenkan == null && cols.rope == null && cols.tanren == null) return (__asaDeclsCache = null);
-  const A = CONFIG.ACTIONS.ASA_COL;
-  const names = (CONFIG.KPI.STAFF || []).concat(['有山', '竹中', '羽田']);
-  const surname = full => {
-    const f = String(full || '').trim();
-    for (const s of names) { if (f.indexOf(s) === 0) return s; }
-    return f;
-  };
-  const yesNo = v => {
-    const t = String(v == null ? '' : v).trim();
-    if (t === '') return null;
-    return t.includes('やる');
-  };
-  const byKey = {};
-  for (let i = 1; i < kpiAsa.length; i++) {
-    const r = kpiAsa[i] || [];
-    const d = parseVisitDate(r[A.date]);
-    if (!d) continue;
-    const key = surname(r[A.staff]) + '|' + dateKeyOf(d);
-    const rec = byKey[key] || (byKey[key] = { tenkan: null, rope: null, tanren: null });
-    // 同日に複数回答があれば後勝ち
-    if (cols.tenkan != null) { const p = parseTenkanDecl(r[cols.tenkan]); if (p) rec.tenkan = p; }
-    if (cols.rope != null) { const y = yesNo(r[cols.rope]); if (y != null) rec.rope = y; }
-    if (cols.tanren != null) { const y = yesNo(r[cols.tanren]); if (y != null) rec.tanren = y; }
-  }
-  return (__asaDeclsCache = byKey);
-}
-
 // 個人ランキングタブから院所属の施術者リストを取得
 function clinicStaffList(name) {
   if (!kpiPersonalGrid) return [];
@@ -2058,77 +1938,172 @@ function clinicStaffList(name) {
   return out;
 }
 
-// 各院ページ「今日のアクション（宣言 vs 実行）」ブロック
-// 宣言＝朝の仕込み（転換のフリーテキスト＋ロープレ/鍛錬のやる宣言）、実行＝行動ログ。
-function declVsActHtml(name) {
-  const staffList = clinicStaffList(name);
-  if (!staffList.length) return '';
-  const st = actStats();
-  const decls = asaDecls();
-  const tKey = dayKey(0), yKey = dayKey(-1);
+// 院の施術者リスト（個人ランキングに当月の実績がまだ無い月初は、個人日次の直近の記録から補う）
+function clinicStaffAny(name) {
+  const list = clinicStaffList(name);
+  if (list.length) return list;
+  const pd = pdData();
+  const out = [];
+  if (pd && pd.by[name]) {
+    Object.keys(pd.by[name]).sort().reverse().slice(0, 14).forEach(d => {
+      pd.by[name][d].forEach(x => { if (!out.includes(x.staff)) out.push(x.staff); });
+    });
+  }
+  return out;
+}
+
+// 各院ページ「今日の行動」ブロック（2026-09-30）
+// 朝＝朝の仕込みで今日試すことを決める → 現場 → 夜＝日報で結果と次の修正。技術の返答は育成シート。
+// 旧「宣言 vs 実行」の表は外した（10/1の設問改定で朝の件数宣言が無くなったため。未宣言・0件と表示しない）。
+function actionLinksHtml(name) {
   const A = CONFIG.ACTIONS;
-  const G = A.GOALS_PP || { tenkan: 50, line: 50, rope: 22, tanren: 22 };
-  const tenkanOf = o => o ? (o.opt || 0) + (o.order || 0) + (o.sub || 0) : 0;
-  // ロープレ/鍛錬の「宣言→実行」ミニチップ（宣言していない日は出さない）
-  const miniChip = (label, declared, done) => {
-    if (declared == null) return '';
-    if (!declared) return `<span class="dv-detail">${label}—</span>`;
-    return `<span class="dv-detail">${label}${done ? '🟢' : '🔴'}</span>`;
-  };
-  let rows = '';
-  staffList.forEach(s => {
-    const d0 = decls ? decls[s + '|' + tKey] : null;
-    const d1 = decls ? decls[s + '|' + yKey] : null;
-    const staffStat = st ? st.byStaff[s] : null;
-    const a1 = staffStat ? staffStat.byDate[yKey] : null;
-    const m = staffStat ? staffStat.month : null;
-    // 今日の宣言
-    let today;
-    if (d0 && (d0.tenkan || d0.rope != null || d0.tanren != null)) {
-      const parts = [];
-      if (d0.tenkan) parts.push(`転換 <b>${d0.tenkan.total}件</b> <span class="dv-detail">${escHtml(d0.tenkan.text)}</span>`);
-      if (d0.rope != null) parts.push(`<span class="dv-detail">ロープレ${d0.rope ? '🔥' : '—'}</span>`);
-      if (d0.tanren != null) parts.push(`<span class="dv-detail">鍛錬${d0.tanren ? '🔥' : '—'}</span>`);
-      today = parts.join(' ');
-    } else {
-      today = '<span class="dv-none">未宣言</span>';
-    }
-    // 昨日の宣言 vs 実行（主役は転換。ロープレ/鍛錬はチップで）
-    const yDecl = d1 && d1.tenkan ? d1.tenkan.total : null;
-    const yAct = tenkanOf(a1);
-    let yCell;
-    if (yDecl == null && !yAct) {
-      yCell = '<span class="dv-muted">—</span>';
-    } else if (yDecl == null) {
-      yCell = `実行 ${yAct}件（宣言なし）`;
-    } else {
-      const sig = yAct >= yDecl ? ((yDecl > 0 || yAct > 0) ? '🟢' : '') : (yAct > 0 ? '🟡' : '🔴');
-      yCell = `宣言 ${yDecl} → 実行 <b>${yAct}件</b> ${sig}`;
-    }
-    yCell += ' ' + miniChip('ロ', d1 ? d1.rope : null, !!(a1 && a1.rope))
-      + ' ' + miniChip('鍛', d1 ? d1.tanren : null, !!(a1 && a1.tanren));
-    // 当月実行（1人あたり目標つき）
-    const month = m
-      ? `転換 ${m.opt + m.order + m.sub}/${G.tenkan}・LINE ${m.line}/${G.line}<br><span class="dv-detail">ロープレ ${m.rope}/${G.rope}・鍛錬 ${m.tanren}/${G.tanren}</span>`
-      : '<span class="dv-muted">0</span>';
+  const sheets = clinicStaffAny(name).map(s => {
     const url = (A.IKUSEI_URLS || {})[s];
-    const nameCell = url ? `<a href="${url}" target="_blank" rel="noopener" title="育成シート（戦術記録）を開く">${escHtml(s)} ✍️</a>` : escHtml(s);
-    rows += `<tr><td class="ft-label">${nameCell}</td><td>${today}</td><td>${yCell}</td><td>${month}</td></tr>`;
-  });
-  const note = st ? '' : `<div class="kpi-note" style="margin:0 0 10px;">育成シート「戦術記録」が読めていません（中継APIの共有を確認）。</div>`;
+    return url ? `<a href="${url}" target="_blank" rel="noopener">${escHtml(s)}</a>` : '';
+  }).join('');
   return `
     <div class="kpi-block">
-      <h3 class="kpi-h">今日のアクション（宣言 vs 実行）<span class="kpi-tag live">LIVE</span></h3>
-      ${note}
+      <h3 class="kpi-h">今日の行動</h3>
+      <div class="act-flow">朝：今日試すことを決める → 現場で実行 → 夜：結果と次の修正を書く</div>
+      <div class="dv-actions">
+        <a class="dv-btn" href="${A.FORM_URL}" target="_blank" rel="noopener">☀️ 朝の仕込み</a>
+        <a class="dv-btn" href="${A.NIPPO_URL}" target="_blank" rel="noopener">🌙 日報（施術スタッフ）</a>
+      </div>
+      ${sheets ? `<div class="act-sheets"><span>前回の返答を読む（育成シート）</span>${sheets}</div>` : ''}
+    </div>`;
+}
+
+// 件数の記録（育成シート「戦術記録」の当月分）。詳細の中に表示する。
+// 日報の実行チェックとは別物＝ここは件数の記録。読めない・記録が無い人を 0 と表示しない。
+function tacticsCountsHtml(name) {
+  const staffList = clinicStaffAny(name);
+  if (!staffList.length) return '';
+  const st = actStats();
+  const A = CONFIG.ACTIONS;
+  const G = A.GOALS_PP || { tenkan: 50, line: 50, rope: 22, tanren: 22 };
+  let rows = '';
+  staffList.forEach(s => {
+    const m = st && st.byStaff[s] ? st.byStaff[s].month : null;
+    const url = (A.IKUSEI_URLS || {})[s];
+    const nameCell = url ? `<a href="${url}" target="_blank" rel="noopener">${escHtml(s)}</a>` : escHtml(s);
+    const cell = (v, g) => m ? `${v}<span class="dv-detail"> / ${g}</span>` : '<span class="dv-muted">記録なし</span>';
+    rows += `<tr><td class="ft-label">${nameCell}</td>
+      <td>${cell(m ? m.opt + m.order + m.sub : 0, G.tenkan)}</td><td>${cell(m ? m.line : 0, G.line)}</td>
+      <td>${cell(m ? m.rope : 0, G.rope)}</td><td>${cell(m ? m.tanren : 0, G.tanren)}</td></tr>`;
+  });
+  const note = st
+    ? '育成シート「戦術記録」に入力された当月の件数です。鍛錬・ロープレを実行したかは夜の日報で答えます。'
+    : '育成シート「戦術記録」が読めていません（中継APIの共有を確認）。';
+  return `
+    <div class="kpi-block">
+      <h3 class="kpi-h">件数の記録（戦術記録・当月）</h3>
       <div class="flow-table-wrap"><table class="flow-table">
-        <thead><tr><th>施術者</th><th>今日の宣言</th><th>昨日（宣言 → 実行）</th><th>当月実行 / 目標</th></tr></thead>
+        <thead><tr><th>施術者</th><th>転換の提案</th><th>LINE発信</th><th>ロープレ</th><th>鍛錬</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
-      <div class="dv-actions">
-        <a class="dv-btn" href="${A.FORM_URL}" target="_blank" rel="noopener">☀️ 朝の仕込み（振り返りと宣言）</a>
-        <a class="dv-btn ghost" href="${A.LOG_URL}" target="_blank" rel="noopener">✍️ 戦術記録（自分の育成シートに入力）</a>
-      </div>
+      <div class="pd-note">${note}</div>
     </div>`;
+}
+
+// ============================================================
+// 個人の日次2指標（稼働率・コマ単価）— 各院ページ上部（2026-09-30 竹中指示）
+// 元データ＝分析シート「個人日次」（構築GASが日計表の施術者パネルと実労働時間グリッドから毎時集計）。
+//   稼働率＝その日・その院の実施コマ ÷（実労働h×6）／コマ単価＝同じ範囲の個人売上 ÷ 実施コマ。
+//   兼務者は院ごとの行（全院合計は作らない）。月次の値は使わない。
+// 区別する状態: 実労働時間が未入力＝稼働率は出さない／勤務あり・施術0コマ＝稼働率0%・コマ単価は出さない／
+//   その日その院の施術記録が未入力＝どちらも出さない／記録が無い人は表示しない（未達扱いにしない）。
+// ============================================================
+let __pdCache;
+const pdSel = {};   // 院名 → 選択中の日付（yyyy-mm-dd）
+function pdData() {
+  if (__pdCache !== undefined) return __pdCache;
+  if (!kpiPd || kpiPd.length < 3) return (__pdCache = null);
+  const title = String((kpiPd[0] || [])[0] || '');
+  const m = title.match(/更新\s*(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2})/);
+  const updated = m ? `${m[1]}/${m[2]} ${m[3].padStart(2, '0')}:${m[4]}` : '';
+  const f = v => parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')) || 0;
+  const by = {};
+  for (const r of kpiPd) {
+    const d = String((r || [])[0] || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
+    const clinic = String(r[1] || '').trim(), staff = String(r[2] || '').trim();
+    if (!clinic || !staff) continue;
+    if ((CONFIG.KPI.HIDE_STAFF || []).includes(staff)) continue;
+    const c = by[clinic] || (by[clinic] = {});
+    (c[d] || (c[d] = [])).push({ staff, hours: f(r[3]), koma: f(r[4]), sales: f(r[5]), ken: f(r[6]), pt: f(r[7]) });
+  }
+  return (__pdCache = { updated, by });
+}
+function pdDateLabel(d) {
+  const p = d.split('-').map(Number);
+  const dt = new Date(p[0], p[1] - 1, p[2]);
+  return `${p[1]}/${p[2]}（${'日月火水木金土'[dt.getDay()]}）`;
+}
+// 1人分の表示値（画面と照合テストで同じ計算を使う）
+function pdCalc(x) {
+  const recorded = x.pt > 0;           // その日その院に施術記録（患者行）がある
+  const cap = x.hours * 6;             // 使える10分枠
+  let rate = null, rateNote = '', unit = null, unitNote = '';
+  if (x.hours > 0) {
+    if (x.koma > 0) rate = x.koma / cap;
+    else if (recorded) rate = 0;
+    else rateNote = '施術記録が未入力';
+  } else {
+    rateNote = '実労働時間が未入力';
+  }
+  if (x.koma > 0) unit = x.sales / x.koma;
+  else unitNote = recorded ? '施術0コマ' : '施術記録が未入力';
+  return { rate, rateNote, unit, unitNote, cap };
+}
+function pdBlockHtml(name, idx) {
+  const G = CONFIG.KPI.PD_GOAL || { rate: 80, unit: 2000 };
+  const head = `<h3 class="kpi-h">個人の日次2指標<span class="pd-goal">目安：稼働率 ${G.rate}%・コマ単価 ${yenFmt(G.unit)}</span></h3>`;
+  const wrap = inner => `<div class="kpi-block" id="pdBlock${idx}">${head}${inner}</div>`;
+  const pd = pdData();
+  if (!pd) return wrap('<div class="kpi-note">日次のデータを準備中です（日計表からの集計が終わると表示されます）。</div>');
+  const today = dayKey(0);
+  const days = pd.by[name] || {};
+  const dates = Object.keys(days).filter(d => d <= today).sort().reverse();
+  if (!dates.length) return wrap('<div class="kpi-note">この院の日次の記録がまだありません。</div>');
+  let sel = pdSel[name];
+  if (!sel || !dates.includes(sel)) {
+    // 初期表示＝直近の完了した診療日（今日より前で、施術記録がある日）
+    sel = dates.find(d => d < today && days[d].some(x => x.pt > 0)) || dates[0];
+    pdSel[name] = sel;
+  }
+  const opts = dates.map(d => `<option value="${d}"${d === sel ? ' selected' : ''}>${pdDateLabel(d)}${d === today ? ' 今日・途中' : ''}</option>`).join('');
+  const num = v => (Math.round(v * 10) / 10).toLocaleString('ja-JP');
+  const rows = days[sel].slice().sort((a, b) => b.sales - a.sales).map(x => {
+    const c = pdCalc(x);
+    const rateCell = c.rate == null
+      ? `<span class="pd-val none">—</span><span class="pd-sub">${c.rateNote}</span>`
+      : `<span class="pd-val${c.rate * 100 >= G.rate ? ' hit' : ''}">${Math.round(c.rate * 100)}%</span><span class="pd-sub">${num(x.koma)}コマ ÷ ${num(c.cap)}枠（${num(x.hours)}h×6）</span>`;
+    const unitCell = c.unit == null
+      ? `<span class="pd-val none">—</span><span class="pd-sub">${c.unitNote}</span>`
+      : `<span class="pd-val${c.unit >= G.unit ? ' hit' : ''}">${yenFmt(c.unit)}</span><span class="pd-sub">${yenFmt(x.sales)} ÷ ${num(x.koma)}コマ</span>`;
+    return `<tr><td class="ft-label">${escHtml(x.staff)}</td><td>${rateCell}</td><td>${unitCell}</td></tr>`;
+  }).join('');
+  const todayNote = sel === today
+    ? `<div class="pd-today">今日の分は途中の数字です（日計表の入力が ${pd.updated || '直近の集計'} 時点まで反映）。</div>`
+    : '';
+  return wrap(`
+      <div class="pd-bar">
+        <label for="pdDate${idx}">対象日</label>
+        <select id="pdDate${idx}" onchange="pdChange(${idx}, this.value)">${opts}</select>
+        <span>${name}院での実績（兼務の方は院ごとに表示）</span>
+      </div>
+      ${todayNote}
+      <div class="flow-table-wrap"><table class="flow-table pd-table">
+        <thead><tr><th>施術者</th><th>稼働率（日）</th><th>コマ単価（日）</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="pd-note">稼働率＝実施コマ ÷（実労働時間×6）。コマ単価＝その日の個人売上 ÷ 実施コマ。1コマ＝10分。日計表の入力から集計（新しい入力はありません）。${pd.updated ? `集計 ${pd.updated} 更新。` : ''}</div>`);
+}
+function pdChange(idx, value) {
+  const name = CONFIG.KPI.CLINICS[idx];
+  pdSel[name] = value;
+  const el = document.getElementById('pdBlock' + idx);
+  if (el) el.outerHTML = pdBlockHtml(name, idx);
 }
 
 // ============================================================
@@ -2169,7 +2144,7 @@ function renderPersonalRanking() {
     if (!String(r[1] || '').trim()) break;   // 施術者名が空＝終端
     rows.push(r);
   }
-  // 列: 0順位 1施術者 2所属院 3個人売上 4-120万達成 5余剰 6目的休暇 7稼働率 8人時
+  // 列: 0順位 1施術者 2所属院 3個人売上 4-120万達成 5余剰 6目的休暇 7稼働率 8人時 9単価(表示しない) 10全患者数 11通院頻度 12個人予算
   // 各行の経過診療日は所属院（最初に一致した院）のものを使用
   const progOf = clinicStr => {
     for (const c of CONFIG.KPI.CLINICS) {
@@ -2180,37 +2155,26 @@ function renderPersonalRanking() {
   let html = `<div class="rank-table-wrap"><table class="rank-table">
     <thead><tr>
       <th>順位</th><th>施術者</th><th>所属院</th><th>個人売上(月)</th>
-      <th>マイルストーン</th><th>着地予測</th><th>単価</th><th>全患者数</th><th>通院頻度</th><th>自己ベスト</th><th>稼働率</th><th>人時(円/h)</th>
+      <th>着地予測</th><th>全患者数</th><th>通院頻度</th><th>自己ベスト</th><th>稼働率(月)</th><th>人時(円/h)</th>
     </tr></thead><tbody>`;
   rows.forEach(r => {
     const staff = String(r[1] || '').trim();
     if ((CONFIG.KPI.HIDE_STAFF || []).includes(staff)) return;   // 2026-08-21: 竹中さんは表示対象外
     const sales = kpiNum(r[3]);
-    const ms = personMilestone(sales, progOf(r[2]));
-    const sig = ms.band === 'green' ? '🟢' : (ms.band === 'yellow' ? '🟡' : '🔴');
-    const reachedLabel = ms.reached ? `${ms.reached.l} 到達` : `${ms.MS[0].l} へ`;
-    const nextLabel = ms.next ? `次:${ms.next.l} あと${yenFmt(ms.next.v - sales)}` : '制覇 🏆';
-    let fcCell = '—';
-    if (ms.fc > 0) {
-      const fcMs = personMilestone(ms.fc, null);
-      fcCell = `${yenFmt(ms.fc)}${fcMs.reached ? '<br><span class="rank-fc-ms">' + fcMs.reached.l + ' 見込み</span>' : ''}`;
-    }
+    // 2026-09-30: マイルストーン（段階バー・到達バッジ・次の○万円・○万円見込み・段階の行色）と単価列を削除。
+    const prog = progOf(r[2]);
+    const fc = (prog && prog.elapsed > 0 && prog.total > 0) ? Math.round(sales / prog.elapsed * prog.total) : 0;
+    const fcCell = fc > 0 ? yenFmt(fc) : '—';
     const best = personBest(staff);
     const bestCell = best
-      ? `${yenFmt(best.v)}<br><span class="rank-fc-ms">${best.ym}${ms.fc >= best.v ? '・更新ペース🔥' : ''}</span>`
+      ? `${yenFmt(best.v)}<br><span class="rank-fc-ms">${best.ym}${fc >= best.v ? '・更新ペース🔥' : ''}</span>`
       : '—';
-    html += `<tr class="rank-${ms.band}">
+    html += `<tr>
       <td class="rank-pos">${kpiDisp(r[0])}</td>
       <td class="rank-name">${kpiDisp(r[1])}</td>
       <td class="rank-clinic">${kpiDisp(r[2])}</td>
       <td class="rank-sales">${kpiDisp(r[3])}</td>
-      <td class="rank-rate">
-        <span class="rate-badge rate-${ms.band}">${reachedLabel} ${sig}</span>
-        ${milestoneBarHtml(sales, ms)}
-        <span class="rank-next">${nextLabel}</span>
-      </td>
       <td>${fcCell}</td>
-      <td>${kpiDisp(r[9])}</td>
       <td>${kpiDisp(r[10])}</td>
       <td>${kpiDisp(r[11])}</td>
       <td>${bestCell}</td>
