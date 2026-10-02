@@ -142,13 +142,26 @@ async function loadAllData(credential) {
   hideGlobalError();
 
   try {
-    const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: credential,
-    });
-    if (!res.ok) throw new Error('サーバーへの接続に失敗しました');
-    const data = await res.json();
+    // 2026-10-02: 中継API側の処理は成功しているのに、Google側で応答の受け渡しに一時的に失敗することがある
+    // （エラー応答、または動作確認用のGET応答＝sheets無しにすり替わる）。少し待って最大3回まで自動で取り直す。
+    let data = null, lastErr = null;
+    for (let attempt = 0; attempt < 3 && !data; attempt++) {
+      if (attempt > 0) await new Promise(r => setTimeout(r, 1500));
+      try {
+        const res = await fetch(CONFIG.APPS_SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: credential,
+        });
+        if (!res.ok) throw new Error('サーバーへの接続に失敗しました');
+        const d = await res.json();
+        if (d && d.ok && !d.sheets) throw new Error('サーバーからデータを受け取れませんでした');
+        data = d;
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+    if (!data && lastErr) throw lastErr;
 
     if (!data || !data.ok) {
       const code = data && data.error;
