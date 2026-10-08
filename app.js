@@ -2169,7 +2169,7 @@ function renderPersonalRanking() {
   html += `<div class="rank-table-wrap"><table class="rank-table">
     <thead><tr>
       <th>順位</th><th>施術者</th><th>院</th><th>担当来院</th><th>入力率</th>
-      <th>提案</th><th>提案率</th><th>実行</th><th>実行率</th><th>成約</th><th>成約率</th><th>集計中</th><th>提案の内訳</th>
+      <th>提案</th><th>提案率</th><th>実行</th><th>実行率</th><th>成約</th><th>成約率</th><th>集計中</th>
     </tr></thead><tbody>`;
   let pos = 0;
   rows.forEach(r => {
@@ -2190,7 +2190,6 @@ function renderPersonalRanking() {
       <td class="rank-sales">${d(r[9])}</td>
       <td class="rank-sales">${d(r[10])}</td>
       <td>${d(r[13])}</td>
-      <td style="text-align:left;font-size:12px">${d(r[12])}</td>
     </tr>`;
   });
   totals.forEach(r => {
@@ -2208,7 +2207,6 @@ function renderPersonalRanking() {
       <td class="rank-sales">${d(r[9])}</td>
       <td class="rank-sales">${d(r[10])}</td>
       <td>${d(r[13])}</td>
-      <td style="text-align:left;font-size:12px">${d(r[12])}</td>
     </tr>`;
   });
   html += `</tbody></table></div>`;
