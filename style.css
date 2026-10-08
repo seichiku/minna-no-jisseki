@@ -338,6 +338,7 @@ body {
 
 /* ===== 個人ランキング 行の達成度色分け ===== */
 .rank-table tr.rank-green  td { background: #e9f9ef; }
+.rank-table tr.rank-total td { background: #f3f4f6; font-weight: 700; }
 .rank-table tr.rank-yellow td { background: #fff7e0; }
 .rank-table tr.rank-red    td { background: #fdeeee; }
 .rank-table tr.rank-green  .rank-sales { color: #15803d; }

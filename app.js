@@ -2120,17 +2120,19 @@ function pdChange(idx, value) {
 }
 
 // ============================================================
-// 個人ランキング（分析シート「個人ランキング」タブをミラー）
+// 個人ランキング（2026-10-08〜 分析シート「提案ファネル」タブをミラー）
+//   提案→トライアル実施→成約 の施術者別ファネル。並びはシートどおり（提案あり件数の降順）。
+//   旧「個人ランキング」タブ（売上順）は各院ページの個人カード（個人予算）で引き続き使う。
 // ============================================================
 let kpiPersonalGrid = null;
 let kpiPersonalError = false;
 
 async function loadPersonalRanking() {
   try {
-    kpiPersonalGrid = await fetchSheet(CONFIG.KPI.ANALYSIS_ID, CONFIG.KPI.PERSONAL_TAB, 'A1:I40');
+    kpiPersonalGrid = await fetchSheet(CONFIG.KPI.ANALYSIS_ID, CONFIG.KPI.FUNNEL_TAB);
     kpiPersonalError = false;
   } catch (err) {
-    console.warn('個人ランキング読込失敗（共有未設定の可能性）:', err);
+    console.warn('提案ファネル読込失敗:', err);
     kpiPersonalError = true;
   }
 }
@@ -2139,60 +2141,74 @@ function renderPersonalRanking() {
   const el = document.getElementById('personalRankingBody');
   if (!el) return;
   if (kpiPersonalError || !kpiPersonalGrid) {
-    el.innerHTML = `<div class="kpi-note">個人ランキングを表示するには、分析シートを @seichiku.org に閲覧共有してください。</div>`;
+    el.innerHTML = `<div class="kpi-note">提案ファネル（分析シート）を読み込めませんでした。</div>`;
     return;
   }
-  // ヘッダ行（A列が「順位」）を探す
+  const g = kpiPersonalGrid;
+  const cell = (i, j) => String(((g[i] || [])[j]) || '').trim();
+  // 1行目「提案ファネル（施術者別）　更新 M/d HH:mm」→ 更新時刻
+  const upd = (cell(0, 0).match(/更新\s*(\S+\s*\S+)/) || [])[1] || '';
+  // 最初の月ブロック＝当月。見出し行（A列「施術者」）の直前の行が月ラベル
   let hi = -1;
-  for (let i = 0; i < kpiPersonalGrid.length; i++) {
-    if (String((kpiPersonalGrid[i] || [])[0]).trim() === '順位') { hi = i; break; }
-  }
+  for (let i = 0; i < g.length; i++) { if (cell(i, 0) === '施術者') { hi = i; break; } }
   if (hi < 0) {
-    el.innerHTML = `<div class="kpi-note">分析シートの個人ランキングデータを読み込めませんでした。</div>`;
+    el.innerHTML = `<div class="kpi-note">提案ファネルのデータがまだありません（13時・21時の更新後に表示されます）。</div>`;
     return;
   }
-  const rows = [];
-  for (let i = hi + 1; i < kpiPersonalGrid.length; i++) {
-    const r = kpiPersonalGrid[i] || [];
-    if (!String(r[1] || '').trim()) break;   // 施術者名が空＝終端
-    rows.push(r);
+  const monthLabel = hi > 0 ? cell(hi - 1, 0) : '';
+  const rows = [], totals = [];
+  for (let i = hi + 1; i < g.length; i++) {
+    const a = cell(i, 0);
+    if (!a) break;                                   // 空行＝ブロック終端
+    if (a === '院 合計' || a === '全社') { totals.push(g[i]); continue; }
+    rows.push(g[i]);
   }
-  // 列: 0順位 1施術者 2所属院 3個人売上 4-120万達成 5余剰 6目的休暇 7稼働率 8人時 9単価(表示しない) 10全患者数 11通院頻度 12個人予算
-  // 各行の経過診療日は所属院（最初に一致した院）のものを使用
-  const progOf = clinicStr => {
-    for (const c of CONFIG.KPI.CLINICS) {
-      if (String(clinicStr || '').includes(c)) return clinicDayProgress(c);
-    }
-    return null;
-  };
-  let html = `<div class="rank-table-wrap"><table class="rank-table">
+  // 列: 0施術者 1院 2担当来院 3判定可能行 4入力率 5提案あり 6提案率 7実行 8実行率 9成約 10成約率(÷提案) 11成約率(÷実施) 12提案内訳 13集計中
+  const d = v => (v == null || String(v).trim() === '') ? '—' : String(v);
+  let html = `<div class="kpi-note" style="margin-bottom:8px">${monthLabel}${upd ? `　📡 更新 ${upd}` : ''}　｜　提案率＝提案あり÷判定可能行（提案列が未入力の来院は母数に入れない）／実行＝30日以内のトライアル実施／成約＝30日以内の対応品目の購入</div>`;
+  html += `<div class="rank-table-wrap"><table class="rank-table">
     <thead><tr>
-      <th>順位</th><th>施術者</th><th>所属院</th><th>個人売上(月)</th>
-      <th>着地予測</th><th>全患者数</th><th>通院頻度</th><th>自己ベスト</th><th>稼働率(月)</th><th>人時(円/h)</th>
+      <th>順位</th><th>施術者</th><th>院</th><th>担当来院</th><th>入力率</th>
+      <th>提案</th><th>提案率</th><th>実行</th><th>実行率</th><th>成約</th><th>成約率</th><th>集計中</th><th>提案の内訳</th>
     </tr></thead><tbody>`;
+  let pos = 0;
   rows.forEach(r => {
-    const staff = String(r[1] || '').trim();
-    if ((CONFIG.KPI.HIDE_STAFF || []).includes(staff)) return;   // 2026-08-21: 竹中さんは表示対象外
-    const sales = kpiNum(r[3]);
-    // 2026-09-30: マイルストーン（段階バー・到達バッジ・次の○万円・○万円見込み・段階の行色）と単価列を削除。
-    const prog = progOf(r[2]);
-    const fc = (prog && prog.elapsed > 0 && prog.total > 0) ? Math.round(sales / prog.elapsed * prog.total) : 0;
-    const fcCell = fc > 0 ? yenFmt(fc) : '—';
-    const best = personBest(staff);
-    const bestCell = best
-      ? `${yenFmt(best.v)}<br><span class="rank-fc-ms">${best.ym}${fc >= best.v ? '・更新ペース🔥' : ''}</span>`
-      : '—';
+    const staff = String(r[0] || '').trim();
+    if ((CONFIG.KPI.HIDE_STAFF || []).includes(staff)) return;
+    pos++;
+    const medal = pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : String(pos);
     html += `<tr>
-      <td class="rank-pos">${kpiDisp(r[0])}</td>
-      <td class="rank-name">${kpiDisp(r[1])}</td>
-      <td class="rank-clinic">${kpiDisp(r[2])}</td>
-      <td class="rank-sales">${kpiDisp(r[3])}</td>
-      <td>${fcCell}</td>
-      <td>${kpiDisp(r[10])}</td>
-      <td>${kpiDisp(r[11])}</td>
-      <td>${bestCell}</td>
-      <td>${kpiDisp(r[7])}</td>
-      <td>${kpiDisp(r[8])}</td>
+      <td class="rank-pos">${medal}</td>
+      <td class="rank-name">${staff}</td>
+      <td class="rank-clinic">${d(r[1])}</td>
+      <td>${d(r[2])}</td>
+      <td>${d(r[4])}</td>
+      <td class="rank-sales">${d(r[5])}</td>
+      <td class="rank-sales">${d(r[6])}</td>
+      <td>${d(r[7])}</td>
+      <td>${d(r[8])}</td>
+      <td class="rank-sales">${d(r[9])}</td>
+      <td class="rank-sales">${d(r[10])}</td>
+      <td>${d(r[13])}</td>
+      <td style="text-align:left;font-size:12px">${d(r[12])}</td>
+    </tr>`;
+  });
+  totals.forEach(r => {
+    const a = String(r[0] || '').trim();
+    html += `<tr class="rank-total">
+      <td></td>
+      <td class="rank-name">${a === '全社' ? '全社' : '院 合計'}</td>
+      <td class="rank-clinic">${d(r[1])}</td>
+      <td>${d(r[2])}</td>
+      <td>${d(r[4])}</td>
+      <td class="rank-sales">${d(r[5])}</td>
+      <td class="rank-sales">${d(r[6])}</td>
+      <td>${d(r[7])}</td>
+      <td>${d(r[8])}</td>
+      <td class="rank-sales">${d(r[9])}</td>
+      <td class="rank-sales">${d(r[10])}</td>
+      <td>${d(r[13])}</td>
+      <td style="text-align:left;font-size:12px">${d(r[12])}</td>
     </tr>`;
   });
   html += `</tbody></table></div>`;
