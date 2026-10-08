@@ -1778,14 +1778,14 @@ function renderKpiLeading() {
         <div class="kpi-card-big">${val}<span class="kpi-card-unit"> / 目標 ${goal}</span></div>
         <div class="kpi-card-sub">${sub}<span class="kpi-tag live">LIVE</span></div>
       </div>`;
-    html = card('転換 提案数（全社・今月）', tenkan, `${G.tenkan * N}（${G.tenkan}件/人）`,
+    html = card('提案数（全社・今月）', tenkan, `${G.tenkan * N}（${G.tenkan}件/人）`,
       `オプション ${st.total.opt}・オーダー ${st.total.order}・サブスク ${st.total.sub} `);
     html += card('LINE 発信数（全社・今月）', st.total.line, `${G.line * N}（${G.line}件/人）`, '');
     html += card('ロープレ 実施数（全社・今月）', st.total.rope, `${G.rope * N}（出勤日は毎日）`, '');
     html += card('鍛錬 実施数（全社・今月）', st.total.tanren, `${G.tanren * N}（出勤日は毎日）`, '');
     html += actSourceNote();   // 出どころ（育成シート「戦術記録」・読めた人/読めなかった人）
   } else {
-    html = tacticCard('転換 提案数（全社・今月）', '転換 提案数');
+    html = tacticCard('提案数（全社・今月）', '提案数');
     html += tacticCard('LINE 発信数（全社・今月）', 'LINE 発信数');
     html += tacticCard('ロープレ 実施数（全社・今月）', 'ロープレ 実施数');
   }
@@ -2011,7 +2011,7 @@ function tacticsCountsHtml(name) {
     <div class="kpi-block">
       <h3 class="kpi-h">件数の記録（戦術記録・当月）</h3>
       <div class="flow-table-wrap"><table class="flow-table">
-        <thead><tr><th>施術者</th><th>転換の提案</th><th>LINE発信</th><th>ロープレ</th><th>鍛錬</th></tr></thead>
+        <thead><tr><th>施術者</th><th>提案</th><th>LINE発信</th><th>ロープレ</th><th>鍛錬</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
       <div class="pd-note">${note}</div>
