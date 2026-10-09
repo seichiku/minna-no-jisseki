@@ -1664,13 +1664,14 @@ function renderKpiSubStaff() {
   const el = document.getElementById('kpiSubStaff');
   if (!el) return;
   if (kpiAccessError || !kpiKaisu) { el.innerHTML = ''; return; }
-  const st = actStats();   // 2026-08-27: 提案数（行動ログ）を成約数の隣に表示
+  const fs = funnelStats();   // 2026-10-09: サブスク提案数は提案ファネル（日計表の提案列）の内訳から（個人ランキングと同じ出どころ）
   let any = false;
   const cards = CONFIG.KPI.STAFF.map(name => {
     const row = kpiFindRow(kpiKaisu, name);
     const n = row ? kpiNum(row[5]) : 0;
     if (row && row[5] !== undefined && String(row[5]).trim() !== '') any = true;
-    const prop = st && st.byStaff[name] ? st.byStaff[name].month.sub : 0;
+    const bd = fs && fs.byStaff[name] ? fs.byStaff[name].breakdown : '';
+    const prop = (bd.match(/サブスク(\d+)/) || [])[1] || 0;
     return `
       <div class="kpi-gauge">
         <div class="kpi-gauge-name">${name}</div>
@@ -1767,25 +1768,36 @@ function renderKpiLeading() {
   // 2026-08-27: 行動ログから直接ライブ集計（13/21時のGAS更新を待たない）。
   // ログが読めない時は従来どおり分析シート「戦術（先行指標）」の値にフォールバック。
   const st = actStats();
+  // 全社目標＝1人あたり月目標 × 施術者数（2026-08-27 竹中決定: 転換50/LINE50/ロープレ22/鍛錬22 per 人）
+  const G = CONFIG.ACTIONS.GOALS_PP || { tenkan: 50, line: 50, rope: 22, tanren: 22 };
+  const N = (CONFIG.KPI.STAFF || []).length || 6;
+  const card = (label, val, goal, sub) => `<div class="kpi-card">
+      <div class="kpi-card-label">${label}</div>
+      <div class="kpi-card-big">${val}<span class="kpi-card-unit"> / 目標 ${goal}</span></div>
+      <div class="kpi-card-sub">${sub}<span class="kpi-tag live">LIVE</span></div>
+    </div>`;
+  // 提案数＝提案ファネル（日計表の提案列）の全社行。個人ランキングと同じ数字（2026-10-09 竹中指示）
+  const fs = funnelStats();
   let html;
+  if (fs && fs.total) {
+    html = `<div class="kpi-card">
+      <div class="kpi-card-label">提案数（全社・今月）</div>
+      <div class="kpi-card-big">${fs.total.teian}<span class="kpi-card-unit"> / 目標 ${G.tenkan * N}（${G.tenkan}件/人）</span></div>
+      <div class="kpi-card-sub">${escHtml(fs.total.breakdown)}　出どころ: 日計表の提案列（個人ランキングと同じ）</div>
+    </div>`;
+  } else {
+    html = `<div class="kpi-card">
+      <div class="kpi-card-label">提案数（全社・今月）</div>
+      <div class="kpi-card-big muted">—</div>
+      <div class="kpi-card-sub"><span class="kpi-tag wait">提案ファネルの読込待ち</span></div>
+    </div>`;
+  }
   if (st) {
-    // 全社目標＝1人あたり月目標 × 施術者数（2026-08-27 竹中決定: 転換50/LINE50/ロープレ22/鍛錬22 per 人）
-    const G = CONFIG.ACTIONS.GOALS_PP || { tenkan: 50, line: 50, rope: 22, tanren: 22 };
-    const N = (CONFIG.KPI.STAFF || []).length || 6;
-    const tenkan = st.total.opt + st.total.order + st.total.sub;
-    const card = (label, val, goal, sub) => `<div class="kpi-card">
-        <div class="kpi-card-label">${label}</div>
-        <div class="kpi-card-big">${val}<span class="kpi-card-unit"> / 目標 ${goal}</span></div>
-        <div class="kpi-card-sub">${sub}<span class="kpi-tag live">LIVE</span></div>
-      </div>`;
-    html = card('提案数（全社・今月）', tenkan, `${G.tenkan * N}（${G.tenkan}件/人）`,
-      `オプション ${st.total.opt}・オーダー ${st.total.order}・サブスク ${st.total.sub} `);
     html += card('LINE 発信数（全社・今月）', st.total.line, `${G.line * N}（${G.line}件/人）`, '');
     html += card('ロープレ 実施数（全社・今月）', st.total.rope, `${G.rope * N}（出勤日は毎日）`, '');
     html += card('鍛錬 実施数（全社・今月）', st.total.tanren, `${G.tanren * N}（出勤日は毎日）`, '');
     html += actSourceNote();   // 出どころ（育成シート「戦術記録」・読めた人/読めなかった人）
   } else {
-    html = tacticCard('提案数（全社・今月）', '提案数');
     html += tacticCard('LINE 発信数（全社・今月）', 'LINE 発信数');
     html += tacticCard('ロープレ 実施数（全社・今月）', 'ロープレ 実施数');
   }
@@ -1988,28 +2000,36 @@ function actionLinksHtml(name) {
 
 // 件数の記録（育成シート「戦術記録」の当月分）。詳細の中に表示する。
 // 日報の実行チェックとは別物＝ここは件数の記録。読めない・記録が無い人を 0 と表示しない。
+// 2026-10-09 竹中指示「個人ランキングに合わせる」: 提案列は提案ファネル（日計表の提案列）の件数に差し替え。
+// LINE発信・ロープレ・鍛錬は日計表に無いので戦術記録のまま。
 function tacticsCountsHtml(name) {
   const staffList = clinicStaffAny(name);
   if (!staffList.length) return '';
   const st = actStats();
+  const fs = funnelStats();
   const A = CONFIG.ACTIONS;
   const G = A.GOALS_PP || { tenkan: 50, line: 50, rope: 22, tanren: 22 };
   let rows = '';
   staffList.forEach(s => {
     const m = st && st.byStaff[s] ? st.byStaff[s].month : null;
+    const f = fs ? fs.byStaff[s] : null;
     const url = (A.IKUSEI_URLS || {})[s];
     const nameCell = url ? `<a href="${url}" target="_blank" rel="noopener">${escHtml(s)}</a>` : escHtml(s);
     const cell = (v, g) => m ? `${v}<span class="dv-detail"> / ${g}</span>` : '<span class="dv-muted">記録なし</span>';
+    const teianCell = fs ? `${f ? f.teian : 0}<span class="dv-detail"> / ${G.tenkan}</span>` : '<span class="dv-muted">読込待ち</span>';
     rows += `<tr><td class="ft-label">${nameCell}</td>
-      <td>${cell(m ? m.opt + m.order + m.sub : 0, G.tenkan)}</td><td>${cell(m ? m.line : 0, G.line)}</td>
+      <td>${teianCell}</td><td>${cell(m ? m.line : 0, G.line)}</td>
       <td>${cell(m ? m.rope : 0, G.rope)}</td><td>${cell(m ? m.tanren : 0, G.tanren)}</td></tr>`;
   });
-  const note = st
-    ? '育成シート「戦術記録」に入力された当月の件数です。鍛錬・ロープレを実行したかは夜の日報で答えます。'
-    : '育成シート「戦術記録」が読めていません（中継APIの共有を確認）。';
+  const note = (fs
+    ? '提案＝日計表の「提案」列から集計した当月の件数（個人ランキングと同じ数字・兼務者は全院の合計・13時/21時更新）。'
+    : '提案＝提案ファネル（分析シート）が読めていません。')
+    + (st
+    ? 'LINE発信・ロープレ・鍛錬＝育成シート「戦術記録」に入力された当月の件数。実行したかは夜の日報で答えます。'
+    : 'LINE発信・ロープレ・鍛錬＝育成シート「戦術記録」が読めていません（中継APIの共有を確認）。');
   return `
     <div class="kpi-block">
-      <h3 class="kpi-h">件数の記録（戦術記録・当月）</h3>
+      <h3 class="kpi-h">件数の記録（当月）</h3>
       <div class="flow-table-wrap"><table class="flow-table">
         <thead><tr><th>施術者</th><th>提案</th><th>LINE発信</th><th>ロープレ</th><th>鍛錬</th></tr></thead>
         <tbody>${rows}</tbody>
@@ -2135,6 +2155,34 @@ async function loadPersonalRanking() {
     console.warn('提案ファネル読込失敗:', err);
     kpiPersonalError = true;
   }
+}
+
+// 提案ファネルの当月ブロックを集計 → { byStaff:{姓:{teian,clinic,breakdown}}, byClinic:{南砂:…}, total:{…}, monthLabel, upd }
+// 読めていなければ null。各院ページ「件数の記録」の提案列とチーム実績「提案数（全社・今月）」が使う
+// （2026-10-09 竹中指示「個人ランキングに合わせる」。戦術記録の提案件数とは別物だったため）。
+let __funnelCache;
+function funnelStats() {
+  if (__funnelCache !== undefined) return __funnelCache;
+  const g = kpiPersonalGrid;
+  if (kpiPersonalError || !g) return (__funnelCache = null);
+  const cell = (i, j) => String(((g[i] || [])[j]) || '').trim();
+  let hi = -1;
+  for (let i = 0; i < g.length; i++) { if (cell(i, 0) === '施術者') { hi = i; break; } }
+  if (hi < 0) return (__funnelCache = null);
+  const out = {
+    byStaff: {}, byClinic: {}, total: null,
+    monthLabel: hi > 0 ? cell(hi - 1, 0) : '',
+    upd: (cell(0, 0).match(/更新\s*(\S+\s*\S+)/) || [])[1] || '',
+  };
+  for (let i = hi + 1; i < g.length; i++) {
+    const a = cell(i, 0);
+    if (!a) break;                                   // 空行＝当月ブロック終端
+    const rec = { teian: kpiNum(cell(i, 5)), clinic: cell(i, 1), breakdown: cell(i, 12) };
+    if (a === '全社') out.total = rec;
+    else if (a === '院 合計') out.byClinic[rec.clinic] = rec;
+    else out.byStaff[a] = rec;
+  }
+  return (__funnelCache = out);
 }
 
 function renderPersonalRanking() {
