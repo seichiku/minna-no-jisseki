@@ -2063,7 +2063,8 @@ function pdData() {
     if (!clinic || !staff) continue;
     if ((CONFIG.KPI.HIDE_STAFF || []).includes(staff)) continue;
     const c = by[clinic] || (by[clinic] = {});
-    (c[d] || (c[d] = [])).push({ staff, hours: f(r[3]), koma: f(r[4]), sales: f(r[5]), ken: f(r[6]), pt: f(r[7]) });
+    const hasT = r.length > 8 && String(r[8] == null ? '' : r[8]).trim() !== '';   // 9列目=単価用コマ（2026-11〜 サブ消化・検査を除いたコマ。無い行は従来どおり）
+    (c[d] || (c[d] = [])).push({ staff, hours: f(r[3]), koma: f(r[4]), sales: f(r[5]), ken: f(r[6]), pt: f(r[7]), komaT: hasT ? f(r[8]) : f(r[4]) });
   }
   return (__pdCache = { updated, by });
 }
@@ -2084,8 +2085,9 @@ function pdCalc(x) {
   } else {
     rateNote = '実労働時間が未入力';
   }
-  if (x.koma > 0) unit = x.sales / x.koma;
-  else unitNote = recorded ? '施術0コマ' : '施術記録が未入力';
+  const kT = (x.komaT == null ? x.koma : x.komaT);   // コマ単価の分母＝単価用コマ（2026-10-16）
+  if (kT > 0) unit = x.sales / kT;
+  else unitNote = recorded ? (x.koma > 0 ? '単価対象の施術0コマ' : '施術0コマ') : '施術記録が未入力';
   return { rate, rateNote, unit, unitNote, cap };
 }
 function pdBlockHtml(name, idx) {
@@ -2113,7 +2115,7 @@ function pdBlockHtml(name, idx) {
       : `<span class="pd-val${c.rate * 100 >= G.rate ? ' hit' : ''}">${Math.round(c.rate * 100)}%</span><span class="pd-sub">${num(x.koma)}コマ ÷ ${num(c.cap)}枠（${num(x.hours)}h×6）</span>`;
     const unitCell = c.unit == null
       ? `<span class="pd-val none">—</span><span class="pd-sub">${c.unitNote}</span>`
-      : `<span class="pd-val${c.unit >= G.unit ? ' hit' : ''}">${yenFmt(c.unit)}</span><span class="pd-sub">${yenFmt(x.sales)} ÷ ${num(x.koma)}コマ</span>`;
+      : `<span class="pd-val${c.unit >= G.unit ? ' hit' : ''}">${yenFmt(c.unit)}</span><span class="pd-sub">${yenFmt(x.sales)} ÷ ${num(x.komaT == null ? x.koma : x.komaT)}コマ</span>`;
     return `<tr><td class="ft-label">${escHtml(x.staff)}</td><td>${rateCell}</td><td>${unitCell}</td></tr>`;
   }).join('');
   const todayNote = sel === today
