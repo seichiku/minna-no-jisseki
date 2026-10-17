@@ -1049,6 +1049,7 @@ function renderKpi() {
   renderKpiFlowTable();  // 当月フロー指標表
   renderKpiLeading();    // 先行指標
   renderKpiStock();      // ストックタブ：サブスク
+  renderKpiAcu();        // ストックタブ：鍼灸保険 受診者数（当月実人数・フロー（3院）から 2026-10-17）
   renderKpiSubStaff();   // ストックタブ：サブスク施術者別（当月サブ消化の担当会員数 2026-08-26）
   renderKpiOrder();      // ストックタブ：オーダー回数券
   renderKpiChurn();      // ストックタブ：離脱（サブスク解約・回数券未更新 2026-08-26）
@@ -1632,6 +1633,21 @@ function renderKpiStock() {
         <div class="kpi-card-sub">${tgLabel} ${tgt}名 ｜ MRR ${cmrr}</div>
       </div>`;
   }).join('');
+}
+
+// ② ストック：鍼灸保険 受診者数（当月に保険種「鍼」で来院した実人数・柔整鍼灸の併用込み）
+//   データ元＝分析シート「フロー（3院）」の行「鍼灸保険 受診者数(実人数)」（構築GASが毎時集計 2026-10-17）
+function renderKpiAcu() {
+  const el = document.getElementById('kpiAcuCards');
+  if (!el) return;
+  const m = flowMetric('鍼灸保険 受診者数(実人数)');
+  if (!m) { el.innerHTML = `<div class="kpi-note">集計待ちです（毎時更新）。</div>`; return; }
+  el.innerHTML = CONFIG.KPI.CLINICS.map(c => `
+      <div class="kpi-card">
+        <div class="kpi-card-label">${c}院</div>
+        <div class="kpi-card-big">${kpiDisp(m[c])}</div>
+        <div class="kpi-card-sub">柔整鍼灸の併用込み</div>
+      </div>`).join('');
 }
 
 // ② ストック：オーダー回数券（施術者6名/人ゲージ・ライブ）
