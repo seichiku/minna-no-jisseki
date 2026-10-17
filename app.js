@@ -811,8 +811,9 @@ function kpiDisp(s) { return (s == null || s === '') ? '—' : String(s); }
 // 毎日の信号にする。月の途中でも予定通りなら🟢になる。
 // ============================================================
 function yenFmt(n) { return '¥' + Number(Math.round(n)).toLocaleString('ja-JP'); }
-function paceBand(p) { return p >= 100 ? 'green' : (p >= 90 ? 'yellow' : 'red'); }
-function paceSig(p) { return p >= 100 ? '🟢' : (p >= 90 ? '🟡' : '🔴'); }
+// 2026-10-17 竹中指示: 🟢100以上／🟡80〜99／🔴79以下（従来は🟡90〜99）
+function paceBand(p) { return p >= 100 ? 'green' : (p >= 80 ? 'yellow' : 'red'); }
+function paceSig(p) { return p >= 100 ? '🟢' : (p >= 80 ? '🟡' : '🔴'); }
 
 // 院の当月ペース情報（実績・今日までの予定額・着地予測・必要日額）
 function clinicPace(name) {
@@ -1412,7 +1413,7 @@ function clinicPersonalHtml(name) {
     if (!(clinic.includes(name) || name.includes(clinic))) continue;
     const sales = kpiNum(r[3]);
     // 2026-09-17 竹中指示「緑で達成の錯覚を与えない／マイルストーン・120万・残り日数は不要／個人予算に対してあといくら足りないかを現実として」
-    // 個人予算＝個人ランキングタブ M列（各院日計表「スタッフマスタ」）。信号＝ペース比（実績 ÷ 今日までの予定額）で🟢100/🟡90〜99/🔴〜89
+    // 個人予算＝個人ランキングタブ M列（各院日計表「スタッフマスタ」）。信号＝ペース比（実績 ÷ 今日までの予定額）で🟢100/🟡80〜99/🔴〜79
     const budget = r.length > 12 ? kpiNum(r[12]) : 0;
     const hasBudgetCol = r.length > 12;
     let band = 'gray', head = '', body = '';
