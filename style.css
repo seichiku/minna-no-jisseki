@@ -535,6 +535,13 @@ body {
 
 /* 個人ランキング追加分 */
 .rank-table-wrap { overflow-x: auto; }
+/* チーム実績「個人予算と売上（全員）」2026-10-27 */
+.personal-table th, .personal-table td { white-space: nowrap; }   /* スマホは横スクロール（名前や院名を縦に割らない） */
+.personal-table td.rank-name { font-weight: 700; text-align: left; }
+.personal-table .pt-gap { color: #991b1b; font-weight: 700; }
+.personal-table .pt-done { color: #166534; font-weight: 700; }
+.personal-table .pt-none { color: var(--text-light); font-size: 12px; }
+.rank-table tr.rank-gray td { background: #f8fafc; }
 .rank-table .ms-bar { margin: 8px 0 22px; height: 8px; min-width: 180px; }
 .rank-table .ms-tick i { height: 13px; }
 .rank-table .ms-tick em { top: 14px; font-size: 9px; }

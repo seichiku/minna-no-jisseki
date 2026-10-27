@@ -181,7 +181,7 @@ async function loadAllData(credential) {
     __readAt = data.readAt || {};
 
     // 2026-08-28: loadCaseData（旧日報）は廃止＝中継APIから旧日報3シートを外し高速化
-    await Promise.all([loadKpiData(), loadPersonalRanking()]);
+    await Promise.all([loadKpiData(), loadPersonalRanking(), loadRankGrid()]);
     renderDataFresh();   // 売上データの更新時刻（日次達成タブの見出しから。信頼性の可視化 2026-09-14）
     renderKpi();
     renderPersonalRanking();
@@ -1046,6 +1046,7 @@ function renderKpi() {
   renderKpiHero();       // 全社着地予測ヒーロー
   renderKpiPaceChart();  // 3院ペースチャート
   renderKpiBudget();     // 院別ペースカード
+  renderKpiPersonalTable(); // 個人予算と売上（全員・個人ランキングタブ 2026-10-27）
   renderKpiFlowTable();  // 当月フロー指標表
   renderKpiLeading();    // 先行指標
   renderKpiStock();      // ストックタブ：サブスク
@@ -1397,16 +1398,14 @@ function clinicChartHtml(name) {
 
 // 各院ページの「個人予算」ブロック（個人ランキングタブを所属院で絞り込み。詳細の中に表示）
 function clinicPersonalHtml(name) {
-  if (kpiPersonalError || !kpiPersonalGrid) return '';
-  let hi = -1;
-  for (let i = 0; i < kpiPersonalGrid.length; i++) {
-    if (String((kpiPersonalGrid[i] || [])[0]).trim() === '順位') { hi = i; break; }
-  }
+  // 2026-10-27: 10/8 に kpiPersonalGrid が提案ファネルへ差し替わり、この表が空になっていた → 個人ランキングタブ専用の kpiRankGrid を読む
+  if (kpiRankError || !kpiRankGrid) return '';
+  const hi = rankHeaderIndex();
   if (hi < 0) return '';
   const prog = clinicDayProgress(name);
   const cards = [];
-  for (let i = hi + 1; i < kpiPersonalGrid.length; i++) {
-    const r = kpiPersonalGrid[i] || [];
+  for (let i = hi + 1; i < kpiRankGrid.length; i++) {
+    const r = kpiRankGrid[i] || [];
     if (!String(r[1] || '').trim()) break;
     const staff = String(r[1]).trim();
     if ((CONFIG.KPI.HIDE_STAFF || []).includes(staff)) continue;   // 2026-08-21: 竹中さんは表示対象外
@@ -1962,15 +1961,12 @@ function actStats() {
 
 // 個人ランキングタブから院所属の施術者リストを取得
 function clinicStaffList(name) {
-  if (!kpiPersonalGrid) return [];
-  let hi = -1;
-  for (let i = 0; i < kpiPersonalGrid.length; i++) {
-    if (String((kpiPersonalGrid[i] || [])[0]).trim() === '順位') { hi = i; break; }
-  }
+  if (!kpiRankGrid) return [];   // 2026-10-27: 個人ランキングタブ（提案ファネルではない）
+  const hi = rankHeaderIndex();
   if (hi < 0) return [];
   const out = [];
-  for (let i = hi + 1; i < kpiPersonalGrid.length; i++) {
-    const r = kpiPersonalGrid[i] || [];
+  for (let i = hi + 1; i < kpiRankGrid.length; i++) {
+    const r = kpiRankGrid[i] || [];
     const staff = String(r[1] || '').trim();
     if (!staff) break;
     if ((CONFIG.KPI.HIDE_STAFF || []).includes(staff)) continue;
@@ -2156,6 +2152,104 @@ function pdChange(idx, value) {
   pdSel[name] = value;
   const el = document.getElementById('pdBlock' + idx);
   if (el) el.outerHTML = pdBlockHtml(name, idx);
+}
+
+// ============================================================
+// 個人ランキングタブ（売上順・M列=個人予算）: チーム実績の個人一覧と各院ページの個人予算カードが読む
+//   2026-10-08 に kpiPersonalGrid が提案ファネルへ差し替わって以降、この表を読む変数が無くなっていた（2026-10-27 復旧）
+// ============================================================
+let kpiRankGrid = null;
+let kpiRankError = false;
+
+async function loadRankGrid() {
+  try {
+    kpiRankGrid = await fetchSheet(CONFIG.KPI.ANALYSIS_ID, CONFIG.KPI.PERSONAL_TAB);
+    kpiRankError = false;
+  } catch (err) {
+    console.warn('個人ランキング読込失敗:', err);
+    kpiRankError = true;
+  }
+}
+
+// 見出し行（A列「順位」）の添字。無ければ -1
+function rankHeaderIndex() {
+  if (!kpiRankGrid) return -1;
+  for (let i = 0; i < kpiRankGrid.length; i++) {
+    if (String((kpiRankGrid[i] || [])[0]).trim() === '順位') return i;
+  }
+  return -1;
+}
+
+// チーム実績「個人予算と売上（全員）」: 1人1行＝施術者/院/予算/現在/予算比/あと/ペース信号（2026-10-27 竹中指示）
+// 列: 1施術者 2所属院（兼務は「南砂・東砂」） 3個人売上(月) 12個人予算（兼務は各院の合算）。竹中は HIDE_STAFF で非表示。
+// ペース比＝実績÷(予算÷院の診療日数×経過日)。兼務者は所属院のうち最初に日次達成の行がある院の経過日を使う。
+function renderKpiPersonalTable() {
+  const el = document.getElementById('kpiPersonalTable');
+  if (!el) return;
+  if (kpiRankError || !kpiRankGrid) {
+    el.innerHTML = `<div class="kpi-note">個人ランキング（分析シート）を読み込めませんでした。</div>`;
+    return;
+  }
+  const hi = rankHeaderIndex();
+  if (hi < 0) {
+    el.innerHTML = `<div class="kpi-note">今月の個人実績はまだありません（毎時更新）。</div>`;
+    return;
+  }
+  const rows = [];
+  let sumBudget = 0, sumSales = 0;
+  for (let i = hi + 1; i < kpiRankGrid.length; i++) {
+    const r = kpiRankGrid[i] || [];
+    const staff = String(r[1] || '').trim();
+    if (!staff) break;
+    if ((CONFIG.KPI.HIDE_STAFF || []).includes(staff)) continue;
+    const clinicStr = String(r[2] || '').trim();
+    const sales = kpiNum(r[3]);
+    const budget = r.length > 12 ? kpiNum(r[12]) : 0;
+    let prog = null;
+    for (const c of clinicStr.split(/[・,、\/]/)) {
+      const name = CONFIG.KPI.CLINICS.find(k => c.includes(k) || k.includes(c));
+      if (name) { prog = clinicDayProgress(name); if (prog && prog.total) break; }
+    }
+    let band = 'gray', sig = '—', budPct = '—', gapHtml = '—';
+    if (budget > 0) {
+      sumBudget += budget; sumSales += sales;
+      budPct = Math.round(sales / budget * 100) + '%';
+      const paceTarget = (prog && prog.total > 0) ? Math.round(budget / prog.total * prog.elapsed) : 0;
+      if (paceTarget > 0) {
+        const pacePct = Math.round(sales / paceTarget * 100);
+        band = paceBand(pacePct);
+        sig = `${paceSig(pacePct)} ${pacePct}%`;
+      }
+      const gap = budget - sales;
+      gapHtml = gap > 0 ? `<span class="pt-gap">${yenFmt(gap)}</span>` : `<span class="pt-done">達成 +${yenFmt(-gap)}</span>`;
+    }
+    rows.push(`<tr class="rank-${band}">
+      <td class="rank-name">${escHtml(staff)}</td>
+      <td class="rank-clinic">${escHtml(clinicStr)}</td>
+      <td>${budget > 0 ? yenFmt(budget) : '<span class="pt-none">未設定</span>'}</td>
+      <td class="rank-sales">${yenFmt(sales)}</td>
+      <td>${budPct}</td>
+      <td>${gapHtml}</td>
+      <td>${sig}</td>
+    </tr>`);
+  }
+  if (!rows.length) {
+    el.innerHTML = `<div class="kpi-note">今月の個人実績はまだありません（毎時更新）。</div>`;
+    return;
+  }
+  const totalGap = sumBudget - sumSales;
+  const totalRow = sumBudget > 0 ? `<tr class="rank-total">
+      <td class="rank-name">合計</td><td></td>
+      <td>${yenFmt(sumBudget)}</td>
+      <td class="rank-sales">${yenFmt(sumSales)}</td>
+      <td>${Math.round(sumSales / sumBudget * 100)}%</td>
+      <td>${totalGap > 0 ? yenFmt(totalGap) : '達成 +' + yenFmt(-totalGap)}</td>
+      <td></td>
+    </tr>` : '';
+  el.innerHTML = `<div class="rank-table-wrap"><table class="rank-table personal-table">
+    <thead><tr><th>施術者</th><th>院</th><th>個人予算</th><th>現在</th><th>予算比</th><th>予算まで あと</th><th>ペース</th></tr></thead>
+    <tbody>${rows.join('')}${totalRow}</tbody></table></div>
+    <div class="kpi-note" style="margin-top:6px">予算＝日計表「スタッフマスタ」の個人予算（兼務は各院の合算）／現在＝当月の個人売上／ペース＝今日までの予定額に対する割合 🟢100以上・🟡80〜99・🔴79以下</div>`;
 }
 
 // ============================================================
