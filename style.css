@@ -519,7 +519,7 @@ body {
 .ms-card .pb-head { margin-left: auto; font-size: 13px; font-weight: 700; }
 .pb-row { display: flex; align-items: baseline; gap: 8px; font-size: 14px; margin: 4px 0; }
 .pb-row span { color: var(--text-light); font-size: 12px; min-width: 56px; }
-.pb-row b { font-size: 20px; font-weight: 700; }
+.pb-row b { font-size: 20px; font-weight: 700; white-space: nowrap; }
 .pb-row em { font-style: normal; font-size: 12px; color: var(--text-light); }
 .pb-gap { margin: 10px 0 6px; padding: 10px 12px; border-radius: 10px; background: #fee2e2; color: #991b1b; font-size: 15px; font-weight: 600; }
 .pb-gap b { font-size: 24px; }

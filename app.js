@@ -1134,10 +1134,12 @@ function renderKpiFlowTable() {
   // 2026-08-20: 全患者数=実人数／総患者=のべ（旧・患者数(今月)）。既存数は実人数ベースに変更
   // 2026-08-26: フロータブの表示範囲（全患者数〜LTV）を全て表示（竹中要望）
   // 2026-09-30: 客単価・ベッド稼働率は表示しない（主指標＝個人の稼働率・コマ単価と混同しないため。分析シートには残る）
+  // 2026-10-29: 離反率（新定義=1ヶ月離反数÷先月全患者数・目標11%）と「目標まであと」を院横並びで追加
   const ROWS = ['全患者数', '総患者', '新患数', '再診数', '既存数', '事前予約(翌日計)',
     '一人生産性', '通院頻度(全患者)', '初再診 通院頻度',
     '鍼灸受診率', '鍼灸受診率(施術ベース)', '人員稼働数',
-    '新患リピ率', '再診リピ率', '既存リピ率', 'LTV'];
+    '新患リピ率', '再診リピ率', '既存リピ率', 'LTV',
+    '離反率', '1ヶ月離反数', '復帰数(新患除く)', '離反 目標まであと(人)'];
   const found = [];
   ROWS.forEach(label => {
     for (const r of kpiFlow) {
@@ -1200,6 +1202,46 @@ function rihanBuckets(clinicName) {
   out.m1.sort((a, b) => a.days - b.days);
   out.m2.sort((a, b) => a.days - b.days);
   return out;
+}
+
+// 離反（目標11%）ブロック（1院分・2026-10-29 竹中指示で定義変更）
+// 定義=1ヶ月離反数÷先月全患者数（先月来院者のうち今月まだ来ていない割合）。構築GASがフロー（3院）に書く行を名前で引く。
+// 「目標まであと N人」＝この人数が月末までに来院すれば目標達成（＝離客フォローリストの1ヶ月離客に声かけ）。
+function rihanGoalHtml(clinicName, pace) {
+  const T = CONFIG.KPI.RIHAN_TARGET_PCT;
+  const title = `離反（目標${T}%以下＝リピート率${100 - T}%）`;
+  const rate = flowMetric('離反率'), m1 = flowMetric('1ヶ月離反数'), prev = flowMetric('先月全患者数');
+  const gapR = flowMetric('離反 目標まであと(人)'), back = flowMetric('復帰数(新患除く)');
+  let goalR = null;
+  if (kpiFlow) for (const r of kpiFlow) { if (r && String(r[0] || '').trim().startsWith('離反 目標人数')) { goalR = { '南砂': r[1], '塩浜': r[2], '東砂': r[3] }; break; } }
+  if (!rate || !m1 || !prev || !gapR || kpiDisp(gapR[clinicName]) === '—') {
+    return `
+      <div class="kpi-block">
+        <h3 class="kpi-h">${title}</h3>
+        <div class="kpi-note">集計待ちです（毎時更新）。</div>
+      </div>`;
+  }
+  const pct = parseFloat(String(rate[clinicName] == null ? '' : rate[clinicName]).replace(/[^0-9.\-]/g, '')) || 0;
+  const band = pct <= T ? 'green' : (pct <= T + 4 ? 'yellow' : 'red');
+  const sig = band === 'green' ? '🟢' : (band === 'yellow' ? '🟡' : '🔴');
+  const gapV = kpiNum(gapR[clinicName]);
+  const today = new Date();
+  const remainCal = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate() - today.getDate();
+  const remain = (pace && pace.remainDays != null) ? `診療日あと${pace.remainDays}日` : `月末まで${remainCal}日`;
+  return `
+    <div class="kpi-block">
+      <h3 class="kpi-h">${title}<span class="kpi-tag live">LIVE</span></h3>
+      <div class="kpi-card budget-${band} ms-card month-card">
+        <div class="kpi-card-label">${escHtml(clinicName)}院<span class="pb-head">${sig} 離反率 ${kpiDisp(rate[clinicName])}</span></div>
+        <div class="pb-row"><span>先月来院</span><b>${kpiDisp(prev[clinicName])}</b></div>
+        <div class="pb-row"><span>今月まだ</span><b>${kpiDisp(m1[clinicName])}</b><em>＝1ヶ月離反（先月来院・今月未来院）</em></div>
+        <div class="pb-row"><span>目標</span><b>${goalR ? kpiDisp(goalR[clinicName]) : '—'}以下</b><em>先月来院×${T}%</em></div>
+        ${gapV > 0
+          ? `<div class="pb-gap">目標まで あと <b>${gapV}人</b><br><small>この人数が月末までに来院すれば達成（${remain}）</small></div>`
+          : `<div class="pb-gap done">目標達成 <b>${sig}</b><small>（${remain}・月末で確定）</small></div>`}
+        <div class="kpi-card-sub">復帰 ${back ? kpiDisp(back[clinicName]) : '—'}（先月来ていなかった人が今月来院・新患除く）。離反率は月末に確定、月中は高めに出ます。</div>
+      </div>
+    </div>`;
 }
 
 // 離客フォローリストのHTML（1院分）
@@ -1463,13 +1505,14 @@ function renderClinicPages() {
       el.innerHTML = `<div class="kpi-note">${name}院の指標を表示するには、分析シートを @seichiku.org に閲覧共有してください。</div>`;
       return;
     }
-    // 鍼灸受診率の色（目標60%）／離反率の色（目標8%以下）。離反数は離反率と同じ健全度バンド。
+    // 鍼灸受診率の色（目標60%）／離反率の色（目標11%以下・2026-10-29 定義変更）。離反数は離反率と同じ健全度バンド。
     // ※kpiNumは「43.8%」を438にしてしまうためパーセント値はfloatでパースする（2026-08-14修正）
     const pctNum = v => parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')) || 0;
     const acuV = acu ? pctNum(acu[name]) : 0;
     const acuBand = acuV >= 60 ? 'green' : (acuV >= 40 ? 'yellow' : 'red');
     const chV = churn ? pctNum(churn[name]) : 0;
-    const chBand = chV <= 8 ? 'green' : (chV <= 12 ? 'yellow' : 'red');
+    const chT = CONFIG.KPI.RIHAN_TARGET_PCT;
+    const chBand = chV <= chT ? 'green' : (chV <= chT + 4 ? 'yellow' : 'red');
     const sig = b => b === 'green' ? '🟢' : (b === 'yellow' ? '🟡' : '🔴');
     const card = (band, label, val, sub) => `
       <div class="kpi-card budget-${band}">
@@ -1512,12 +1555,13 @@ function renderClinicPages() {
         <h3 class="kpi-h">月次の補助指標<span class="kpi-tag live">LIVE</span></h3>
         <div class="kpi-cards">
           ${card(acuBand, '鍼灸受診率（施術ベース）', acu ? kpiDisp(acu[name]) : '—', '目標60%')}
-          ${card(chBand, '離反率', churn ? kpiDisp(churn[name]) : '—', '目標8%以下')}
+          ${card(chBand, '離反率', churn ? kpiDisp(churn[name]) : '—', `目標${chT}%以下（1ヶ月離反÷先月来院）`)}
           ${card(chBand, '1ヶ月離反数', c1 ? kpiDisp(c1[name]) : '—', '')}
           ${card(chBand, '2ヶ月離反数', c2 ? kpiDisp(c2[name]) : '—', '')}
         </div>
       </div>` + tacticsCountsHtml(name);
-    el.innerHTML = pdBlockHtml(name, idx) + actionLinksHtml(name) + month + rihanListHtml(name) + `
+    // 2026-10-29: 今月の状況の直後に「離反（目標11%）・あと何人」→ その対象者＝離客フォローリスト の順
+    el.innerHTML = pdBlockHtml(name, idx) + actionLinksHtml(name) + month + rihanGoalHtml(name, p) + rihanListHtml(name) + `
       <details class="more">
         <summary>月の推移・補助指標・件数の記録を見る</summary>
         ${detail}
