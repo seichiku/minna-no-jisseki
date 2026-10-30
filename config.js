@@ -170,7 +170,6 @@ const CONFIG = {
       '中谷': 'https://docs.google.com/spreadsheets/d/1tT5A-PzTK6JN2QKtcQ3et3RJo7egcWDQdY3T_Wm7w6U/edit',
       '植田': 'https://docs.google.com/spreadsheets/d/1iRuROCZGWed0uWrDK6KDVpnn28qACS8FuUBbJxmWt8Y/edit',
       '河内': 'https://docs.google.com/spreadsheets/d/1t-8i3kOSjjS1tTtzRM_r_mHCHrWOZHIDtmqj8R4QSE4/edit',
-      '作岡': 'https://docs.google.com/spreadsheets/d/1ZSTXQzxI1wNYoAaAK7RRuZWRBj1qcNdsQoZrMr1WHDw/edit',
       '田村': 'https://docs.google.com/spreadsheets/d/1Fgx8btAiWCoOpFsO7AmHpWdqbmXao-HxOiTvrBgPp64/edit',
       '栗田': 'https://docs.google.com/spreadsheets/d/1_74VwPTjpctG1AxWLBegq0Rp5xAbjcghOixHMHZvJdc/edit',
     },

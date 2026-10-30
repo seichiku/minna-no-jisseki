@@ -59,7 +59,6 @@ var IKUSEI = [
   { name: '中谷', clinic: '塩浜', id: '1tT5A-PzTK6JN2QKtcQ3et3RJo7egcWDQdY3T_Wm7w6U' },
   { name: '植田', clinic: '東砂', id: '1iRuROCZGWed0uWrDK6KDVpnn28qACS8FuUBbJxmWt8Y' },
   { name: '河内', clinic: '東砂', id: '1t-8i3kOSjjS1tTtzRM_r_mHCHrWOZHIDtmqj8R4QSE4' },
-  { name: '作岡', clinic: '東砂', id: '1ZSTXQzxI1wNYoAaAK7RRuZWRBj1qcNdsQoZrMr1WHDw' },
   { name: '田村', clinic: '東砂', id: '1Fgx8btAiWCoOpFsO7AmHpWdqbmXao-HxOiTvrBgPp64' },
   { name: '栗田', clinic: '東砂', id: '1_74VwPTjpctG1AxWLBegq0Rp5xAbjcghOixHMHZvJdc' }
 ];
@@ -253,7 +252,9 @@ function readIkuseiTactics_() {
     var p = IKUSEI[i];
     try {
       var ss = SpreadsheetApp.openById(p.id);
-      var sh = ss.getSheetByName(IKUSEI_TAB);
+      // 2026-10-30: 7名のシートで「戦術記録」が「行動メモリー」に改名された（見出し7行目・データ8行目〜だが
+      // 列A〜Fの意味は同じ。日付でない行は下で読み飛ばす）。新名→旧名の順に探す。
+      var sh = ss.getSheetByName('行動メモリー') || ss.getSheetByName(IKUSEI_TAB);
       if (!sh) { ngNames.push(p.name + '(タブ無し)'); continue; }
       var clinic = ikuseiClinic_(ss) || p.clinic;
       var lr = sh.getLastRow();
