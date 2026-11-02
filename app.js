@@ -2166,7 +2166,20 @@ function pdBlockHtml(name, idx) {
   }
   const opts = dates.map(d => `<option value="${d}"${d === sel ? ' selected' : ''}>${pdDateLabel(d)}${d === today ? ' 今日・途中' : ''}</option>`).join('');
   const num = v => (Math.round(v * 10) / 10).toLocaleString('ja-JP');
-  const rows = days[sel].slice().sort((a, b) => b.sales - a.sales).map(x => {
+  const list = days[sel].slice();
+  // 2026-11-02 竹中指示: 白田は南砂所属・塩浜/東砂はヘルプ → どの院のページでも常に行を出す。
+  //   その院に記録が無い日は、勤務した院の行を合算して出し院名を添える。どこにも記録が無い日は「この日の記録なし」。
+  (CONFIG.KPI.PD_ALWAYS || []).forEach(s => {
+    if (list.some(x => x.staff === s)) return;
+    const others = Object.keys(pd.by).filter(c => c !== name && (pd.by[c][sel] || []).some(x => x.staff === s));
+    const agg = { staff: s, hours: 0, koma: 0, sales: 0, ken: 0, pt: 0, komaT: 0, note: others.length ? others.join('・') + 'で勤務' : 'この日の記録なし', none: !others.length };
+    others.forEach(c => pd.by[c][sel].filter(x => x.staff === s).forEach(x => {
+      agg.hours += x.hours; agg.koma += x.koma; agg.sales += x.sales; agg.ken += x.ken; agg.pt += x.pt; agg.komaT += (x.komaT == null ? x.koma : x.komaT);
+    }));
+    list.push(agg);
+  });
+  const rows = list.sort((a, b) => b.sales - a.sales).map(x => {
+    if (x.none) return `<tr><td class="ft-label">${escHtml(x.staff)}</td><td><span class="pd-val none">—</span><span class="pd-sub">${x.note}</span></td><td><span class="pd-val none">—</span><span class="pd-sub">${x.note}</span></td></tr>`;
     const c = pdCalc(x);
     const rateCell = c.rate == null
       ? `<span class="pd-val none">—</span><span class="pd-sub">${c.rateNote}</span>`
@@ -2174,7 +2187,7 @@ function pdBlockHtml(name, idx) {
     const unitCell = c.unit == null
       ? `<span class="pd-val none">—</span><span class="pd-sub">${c.unitNote}</span>`
       : `<span class="pd-val${c.unit >= G.unit ? ' hit' : ''}">${yenFmt(c.unit)}</span><span class="pd-sub">${yenFmt(x.sales)} ÷ ${num(x.komaT == null ? x.koma : x.komaT)}コマ</span>`;
-    return `<tr><td class="ft-label">${escHtml(x.staff)}</td><td>${rateCell}</td><td>${unitCell}</td></tr>`;
+    return `<tr><td class="ft-label">${escHtml(x.staff)}${x.note ? `<span class="pd-sub">${x.note}</span>` : ''}</td><td>${rateCell}</td><td>${unitCell}</td></tr>`;
   }).join('');
   const todayNote = sel === today
     ? `<div class="pd-today">今日の分は途中の数字です（日計表の入力が ${pd.updated || '直近の集計'} 時点まで反映）。</div>`
