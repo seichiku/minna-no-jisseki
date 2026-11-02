@@ -1561,7 +1561,8 @@ function renderClinicPages() {
         </div>
       </div>` + tacticsCountsHtml(name);
     // 2026-10-29: 今月の状況の直後に「離反（目標11%）・あと何人」→ その対象者＝離客フォローリスト の順
-    el.innerHTML = pdBlockHtml(name, idx) + actionLinksHtml(name) + month + rihanGoalHtml(name, p) + rihanListHtml(name) + `
+    // 2026-11-02: 個人の日次2指標の直下に「トライアル枠（今月の残り）」
+    el.innerHTML = pdBlockHtml(name, idx) + trialQuotaHtml(name) + actionLinksHtml(name) + month + rihanGoalHtml(name, p) + rihanListHtml(name) + `
       <details class="more">
         <summary>月の推移・補助指標・件数の記録を見る</summary>
         ${detail}
@@ -2340,6 +2341,59 @@ function funnelStats() {
     else out.byStaff[a] = rec;
   }
   return (__funnelCache = out);
+}
+
+// ============================================================
+// トライアル枠（今月の残り）— 各院ページ「個人の日次2指標」の直下（2026-11-02 竹中指示）
+//   ルール: 施術者1人 月8件＝サブスク無料3件＋鍼灸保険無料5件。オーダー体験(4,400円)は有料なので枠に数えない。
+//   元データ＝提案ファネルタブ末尾「トライアル枠（実行日ベース・施術者別）」ブロック（実施月 / 施術者 / 院 / サブスク無料 / 鍼灸保険無料 / オーダー体験 …）。
+//   実施した月で数える（提案ファネル本体の「実行」＝提案月ベースとは別）。行が無い人＝今月の実施0件＝残り8件。
+// ============================================================
+let __tqCache;
+function trialQuotaStats() {
+  if (__tqCache !== undefined) return __tqCache;
+  const g = kpiPersonalGrid;
+  if (kpiPersonalError || !g) return (__tqCache = null);
+  const cell = (i, j) => String(((g[i] || [])[j]) || '').trim();
+  let si = -1;
+  for (let i = 0; i < g.length; i++) { if (cell(i, 0).startsWith('トライアル枠')) { si = i; break; } }
+  if (si < 0) return (__tqCache = null);
+  const now = new Date();
+  const label = `${now.getFullYear()}年${now.getMonth() + 1}月実施分`;
+  const out = { byStaff: {}, label, found: true };
+  for (let i = si + 2; i < g.length; i++) {           // si+1 = 見出し行
+    const ym = cell(i, 0);
+    if (!ym) break;
+    if (ym !== label) continue;
+    out.byStaff[cell(i, 1)] = { clinics: cell(i, 2), sub: kpiNum(cell(i, 3)), acu: kpiNum(cell(i, 4)), order: kpiNum(cell(i, 5)) };
+  }
+  return (__tqCache = out);
+}
+function trialQuotaHtml(name) {
+  const Q = CONFIG.KPI.TRIAL_QUOTA || { total: 8, sub: 3, acu: 5 };
+  const head = `<h3 class="kpi-h">トライアル枠（今月の残り）<span class="pd-goal">1人 月${Q.total}件＝サブスク無料${Q.sub}＋鍼灸保険無料${Q.acu}</span></h3>`;
+  const wrap = inner => `<div class="kpi-block">${head}${inner}</div>`;
+  const tq = trialQuotaStats();
+  if (!tq) return wrap('<div class="kpi-note">トライアル枠の集計を準備中です（提案ファネルの毎時更新後に表示されます）。</div>');
+  const staff = clinicStaffAny(name).filter(s => !(CONFIG.KPI.HIDE_STAFF || []).includes(s));
+  if (!staff.length) return wrap('<div class="kpi-note">この院の施術者の記録がまだありません。</div>');
+  const rows = staff.map(s => {
+    const x = tq.byStaff[s] || { sub: 0, acu: 0, order: 0 };
+    const used = Math.min(x.sub, Q.sub) + Math.min(x.acu, Q.acu);
+    const remain = Math.max(0, Q.total - used);
+    const cls = remain === 0 ? ' none' : (used > 0 ? ' hit' : '');
+    return `<tr><td class="ft-label">${escHtml(s)}</td>
+      <td><span class="pd-val${cls}">${remain}</span><span class="pd-sub">/ ${Q.total}件（実施 ${used}）</span></td>
+      <td><span class="pd-val">${Math.max(0, Q.sub - x.sub)}</span><span class="pd-sub">/ ${Q.sub}（実施 ${x.sub}）</span></td>
+      <td><span class="pd-val">${Math.max(0, Q.acu - x.acu)}</span><span class="pd-sub">/ ${Q.acu}（実施 ${x.acu}）</span></td>
+      <td><span class="pd-val">${x.order}</span><span class="pd-sub">件（枠外・4,400円）</span></td></tr>`;
+  }).join('');
+  return wrap(`
+      <div class="flow-table-wrap"><table class="flow-table pd-table">
+        <thead><tr><th>施術者</th><th>残り枠</th><th>サブスク無料 残</th><th>鍼灸保険無料 残</th><th>オーダー体験</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="pd-note">${tq.label}。日計表の自費①〜④に入れた「トライアル○○」を実施として数えます（トライアルメンテナンス／美容鍼／エルビオ＝サブスク無料、トライアル鍼灸＝鍼灸保険無料、トライアルオーダー＝枠外）。残った枠は当月で終了。上限超え・同じ人に2回目・別価格は実行前に竹中へ相談。</div>`);
 }
 
 function renderPersonalRanking() {
