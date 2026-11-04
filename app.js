@@ -725,6 +725,7 @@ let kpiAccessError = false;   // ストック(会員/回数券)共有エラー
 let kpiFlowError = false;     // 分析シート共有エラー
 let kpiMaster = null;         // 顧客マスタ「顧客マスタ」grid（離客フォローリスト用）
 let kpiMasterError = false;   // 顧客マスタ共有エラー
+let kpiMeibo = null;          // 分析シート「モニタ_患者名簿」（先月来院・今月まだ の名簿。中継APIが当月の離客1列だけ返す 2026-11-04）
 let kpiKuchikomi = null;      // 週次効果測定「GBP(3店舗)」grid（口コミ回収の現状 2026-08-22）
 let kpiActLog = null;         // 戦術ダッシュボード「行動ログ」grid（提案/LINE/ロープレの実行 2026-08-27）
 let kpiPd = null;             // 分析シート「個人日次」grid（日別×院×施術者の実労働h・コマ・個人売上 2026-09-30）
@@ -773,6 +774,13 @@ async function loadKpiData() {
     console.warn('顧客マスタ読込失敗（共有未設定の可能性）:', err);
     kpiMaster = null;
     kpiMasterError = true;
+  }
+  // 先月来院・今月まだ の名簿（取得できなくても他は出す 2026-11-04）
+  try {
+    kpiMeibo = await fetchSheet(CONFIG.RIHAN.MEIBO_ID, CONFIG.RIHAN.MEIBO_SHEET);
+  } catch (err) {
+    console.warn('患者名簿(先月来院・今月まだ)読込失敗:', err);
+    kpiMeibo = null;
   }
   // 口コミ回収（週次効果測定ダッシュボードGBPタブ：取得できなくても他は出す 2026-08-22）
   try {
@@ -1244,6 +1252,65 @@ function rihanGoalHtml(clinicName, pace) {
     </div>`;
 }
 
+// 「先月来院・今月まだ」名簿（1院分・2026-11-04 竹中指示）
+// 元＝構築GAS rihanCounts_ が毎時（8〜22時台）書く「YYYY-MM|院|離客1」列＝1ヶ月離反数と同じ人。
+// 来院すると次の毎時更新で消える。経過日数は顧客マスタ（院|氏名・空白除去で照合）から添える。
+function prevMonthListHtml(clinicName) {
+  const norm = s => String(s || '').replace(/[\s　]/g, '');
+  const title = '先月来院・今月まだ来ていない方';
+  const waiting = `
+      <div class="kpi-block">
+        <h3 class="kpi-h">${title}</h3>
+        <div class="kpi-note">集計待ちです（毎時更新）。</div>
+      </div>`;
+  if (!kpiMeibo || !kpiMeibo.length) return waiting;
+  const heads = (kpiMeibo[0] || []).map(h => String(h || '').trim());
+  const suffix = '|' + clinicName + '|' + CONFIG.RIHAN.MEIBO_KEY;
+  const col = heads.findIndex(h => h.endsWith(suffix));
+  if (col < 0) return waiting;
+  const ym = heads[col].split('|')[0];
+  // 顧客マスタから経過日数（この院の行だけ）
+  const daysBy = {};
+  if (kpiMaster && kpiMaster.length > 1) {
+    const C = CONFIG.RIHAN.COL;
+    const today = new Date();
+    const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    for (let i = 1; i < kpiMaster.length; i++) {
+      const row = kpiMaster[i] || [];
+      const clinic = String(row[C.clinic] || '').trim();
+      if (!clinic || !(clinic === clinicName || clinic.includes(clinicName) || clinicName.includes(clinic))) continue;
+      const d = parseVisitDate(row[C.lastVisit]);
+      if (!d) continue;
+      daysBy[norm(row[C.name])] = Math.floor((t0 - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
+    }
+  }
+  const list = [];
+  const seen = {};
+  for (let i = 1; i < kpiMeibo.length; i++) {
+    const name = String((kpiMeibo[i] || [])[col] || '').trim();
+    if (!name || seen[name]) continue;
+    seen[name] = 1;
+    const days = daysBy[norm(name)];
+    list.push({ name, days: (days == null ? null : days) });
+  }
+  list.sort((a, b) => (a.days == null ? 9999 : a.days) - (b.days == null ? 9999 : b.days));
+  const chips = list.length
+    ? `<div class="rihan-names">${list.map(x => `<span class="rihan-chip">${escHtml(x.name)}${x.days == null ? '' : `<i>${x.days}日</i>`}</span>`).join('')}</div>`
+    : `<div class="rihan-empty">先月来院した方は全員が今月も来院済みです 🎉</div>`;
+  const m = ym.match(/^(\d{4})-(\d{2})$/);
+  const curM = m ? +m[2] : null, prevM = curM ? (curM === 1 ? 12 : curM - 1) : null;
+  const label = curM ? `${prevM}月に来院・${curM}月はまだ` : '今月まだ';
+  return `
+    <div class="kpi-block">
+      <h3 class="kpi-h">${title}<span class="kpi-tag live">LIVE</span></h3>
+      <div class="rihan-col rihan-prev">
+        <div class="rihan-col-head">${label} <span class="rihan-range">1ヶ月離反の対象者</span><b>${list.length}名</b></div>
+        ${chips}
+        <div class="rihan-note">来院すると毎時の更新（8〜22時台）で消えます。数字は最終来院からの経過日数。</div>
+      </div>
+    </div>`;
+}
+
 // 離客フォローリストのHTML（1院分）
 function rihanListHtml(clinicName) {
   if (kpiMasterError) {
@@ -1562,7 +1629,8 @@ function renderClinicPages() {
       </div>` + tacticsCountsHtml(name);
     // 2026-10-29: 今月の状況の直後に「離反（目標11%）・あと何人」→ その対象者＝離客フォローリスト の順
     // 2026-11-02: 個人の日次2指標の直下に「トライアル枠（今月の残り）」
-    el.innerHTML = pdBlockHtml(name, idx) + trialQuotaHtml(name) + actionLinksHtml(name) + month + rihanGoalHtml(name, p) + rihanListHtml(name) + `
+    // 2026-11-04: 離反カードの直下に「先月来院・今月まだ」名簿（＝目標まであと◯人の対象者・来院すると毎時消える）→ 離客フォローリスト
+    el.innerHTML = pdBlockHtml(name, idx) + trialQuotaHtml(name) + actionLinksHtml(name) + month + rihanGoalHtml(name, p) + prevMonthListHtml(name) + rihanListHtml(name) + `
       <details class="more">
         <summary>月の推移・補助指標・件数の記録を見る</summary>
         ${detail}

@@ -77,6 +77,7 @@ var SHEET_SPECS = [
   [ANALYSIS_ID, '提案ファネル'],        // 提案→実行→成約の施術者別ファネル（個人ランキングタブの表示元 2026-10-08）
   [ANALYSIS_ID, '個人日次'],            // 日別×院×施術者の実労働h・コマ・個人売上（各院ページの日次 稼働率・コマ単価 2026-09-30）
   [MASTER_ID,   '顧客マスタ'],           // 離客フォローリスト（氏名×院×最終来院日）
+  [ANALYSIS_ID, 'モニタ_患者名簿'],      // 「先月来院・今月まだ」名簿（構築GAS rihanCounts_ が毎時書く非表示タブ。当月の「YYYY-MM|院|離客1」列だけ返す 2026-11-04）
   [WEEKLY_ID,   'GBP(3店舗)'],          // 口コミ回収の現状（クチコミ累計/週増分/評価・毎週水曜更新）
   [TAC_ID,      '行動ログ'],             // 先行指標の生ログ＝各自の育成シート「戦術記録」を統合（キー名は互換のため旧名のまま 2026-09-14）
   [ASA_ID,      '2026/8/28~'],          // 朝の仕込み＝今日の宣言（2026-08-27 質問改定で新シート化・日付入り名。質問改定ごとに紐づけ直し→ここを新タブ名に更新）
@@ -179,6 +180,8 @@ function readBundle_(forceRefresh) {
           grid = sh ? sh.getDataRange().getDisplayValues() : [];
           // 顧客マスタは離客リストに使う3列（B=氏名/E=院/K=最終来院日）だけ返す（列位置は維持）
           if (id === MASTER_ID) grid = slimMaster_(grid);
+          // 患者名簿は当月の「先月来院・今月まだ」列（YYYY-MM|院|離客1）だけ返す（過去月・全患者名簿は送らない）
+          if (id === ANALYSIS_ID && name === 'モニタ_患者名簿') grid = slimMeibo_(grid);
           // 朝の仕込みはメールアドレス等を落とし、日付/担当者/役割/【宣言】列だけ返す
           if (id === ASA_ID) grid = slimAsa_(grid);
         }
@@ -232,6 +235,27 @@ function slimMaster_(grid) {
     row[4] = r[4] || '';   // 院
     row[10] = r[10] || ''; // 最終来院日
     out.push(row);
+  }
+  return out;
+}
+
+// 「モニタ_患者名簿」（構築GAS rihanCounts_ が毎時更新・1行目=キー「YYYY-MM|院|名簿／離客1」・2行目以降=氏名）から
+// 当月の「YYYY-MM|院|離客1」＝先月来院して今月まだ来ていない方の列だけを残す（2026-11-04 竹中指示）。
+// 1行目は見出しのまま、列は詰めて返す。該当列が無い月初（毎時更新前）は見出し行だけになる。
+function slimMeibo_(grid) {
+  if (!grid || !grid.length) return [];
+  var ym = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM');
+  var heads = grid[0] || [];
+  var cols = [];
+  for (var c = 0; c < heads.length; c++) {
+    var h = String(heads[c] || '').trim();
+    if (h.indexOf(ym + '|') === 0 && /\|離客1$/.test(h)) cols.push(c);
+  }
+  var out = [];
+  for (var r = 0; r < grid.length; r++) {
+    var src = grid[r] || [], row = [], any = false;
+    for (var k = 0; k < cols.length; k++) { var v = src[cols[k]] || ''; row.push(v); if (v !== '') any = true; }
+    if (r === 0 || any) out.push(row);
   }
   return out;
 }

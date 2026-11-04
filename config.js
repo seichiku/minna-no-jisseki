@@ -220,5 +220,11 @@ const CONFIG = {
     COL: { name: 1, clinic: 4, lastVisit: 10 }, // B=氏名 / E=院 / K=最終来院日
     M1_MIN: 30, M1_MAX: 59,  // 1ヶ月離客（区間）
     M2_MIN: 60, M2_MAX: 89,  // 2ヶ月離客（区間）
+    // 「先月来院・今月まだ」名簿（2026-11-04 竹中指示）＝構築GAS rihanCounts_ が毎時書く分析シートの非表示タブ。
+    // 中継APIが当月の「YYYY-MM|院|離客1」列だけ返す（1行目=キー・2行目以降=氏名・空白除去済み）。
+    // 1ヶ月離反数（先月来院・今月未来院）と同じ名簿なので、来院すると毎時の更新で消える。
+    MEIBO_ID:     '1mIGrmd9S6QrOZz8t5Ntqm9Tqs37JWW_aVVb54AZjh94', // 分析シート
+    MEIBO_SHEET:  'モニタ_患者名簿',
+    MEIBO_KEY:    '離客1',
   },
 };
