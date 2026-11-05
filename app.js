@@ -1786,12 +1786,14 @@ function renderKpiAcu() {
 
 // ② ストック：回数券の全体件数メーター（サブスクと同じ形・2026-11-05 竹中指示）
 //   データ元＝台帳サマリー上段の券種行（A=券種 / B=保有件数（有効のみ） / C=残回数合計 / D=残高金額＝前受金）
-function renderKaisuMeter(meterId, label, title) {
+//   院別＝サマリー下部の行「<券種>保有(院別)」「<券種>前受金(院別)」（B=3院合計・C=南砂・D=塩浜・E=東砂。構築GAS updateStockChurn_ が毎日13/21時に書く 2026-11-05）
+function renderKaisuMeter(meterId, clinicId, label, title) {
   const meter = document.getElementById(meterId);
+  const clinicEl = document.getElementById(clinicId);
   if (!meter) return;
-  if (kpiAccessError || !kpiKaisu) { meter.innerHTML = ''; return; }
+  if (kpiAccessError || !kpiKaisu) { meter.innerHTML = ''; if (clinicEl) clinicEl.innerHTML = ''; return; }
   const row = kpiFindRow(kpiKaisu, label);
-  if (!row) { meter.innerHTML = `<div class="kpi-note">台帳サマリーの「${label}」行が見つかりません。</div>`; return; }
+  if (!row) { meter.innerHTML = `<div class="kpi-note">台帳サマリーの「${label}」行が見つかりません。</div>`; if (clinicEl) clinicEl.innerHTML = ''; return; }
   meter.innerHTML = `
     <div class="kpi-meter-head">
       <span class="kpi-meter-now">${kpiNum(row[1])}</span>
@@ -1799,11 +1801,23 @@ function renderKaisuMeter(meterId, label, title) {
       <span class="kpi-meter-mrr">前受金 ${kpiDisp(row[3])}</span>
     </div>
     <div class="kpi-meter-foot">残回数合計 <span style="font-weight:700;color:var(--text)">${kpiDisp(row[2])}</span> 回　｜　保有＝有効な券のみ（失効・消化済は除く）</div>`;
+
+  if (!clinicEl) return;
+  const cRow = kpiFindRow(kpiKaisu, label + '保有(院別)');
+  const aRow = kpiFindRow(kpiKaisu, label + '前受金(院別)');
+  if (!cRow) { clinicEl.innerHTML = `<div class="kpi-note">院別は集計待ちです（毎日13/21時更新）。</div>`; return; }
+  const idx = { '南砂': 2, '塩浜': 3, '東砂': 4 };
+  clinicEl.innerHTML = CONFIG.KPI.CLINICS.map(c => `
+      <div class="kpi-card">
+        <div class="kpi-card-label">${c}院</div>
+        <div class="kpi-card-big">${kpiNum(cRow[idx[c]])}<span class="kpi-card-unit">件</span></div>
+        <div class="kpi-card-sub">前受金 ${aRow ? kpiDisp(aRow[idx[c]]) : '—'}</div>
+      </div>`).join('');
 }
 
 // ② ストック：オーダー回数券（施術者6名/人ゲージ・ライブ）
 function renderKpiOrder() {
-  renderKaisuMeter('kpiOrderMeter', 'オーダー', '保有中のオーダー回数券');
+  renderKaisuMeter('kpiOrderMeter', 'kpiOrderClinic', 'オーダー', '保有中のオーダー回数券');
   const el = document.getElementById('kpiOrderGauges');
   if (!el) return;
   if (kpiAccessError || !kpiKaisu) {
@@ -1885,7 +1899,7 @@ function renderKpiChurn() {
 
 // ストック: 施術者別オプションチケット保有（台帳サマリーのオプチケ保有列＝E列をミラー。目標なしの現況表示 2026-08-21）
 function renderKpiOpt() {
-  renderKaisuMeter('kpiOptMeter', 'オプチケ', '保有中のオプションチケット');
+  renderKaisuMeter('kpiOptMeter', 'kpiOptClinic', 'オプチケ', '保有中のオプションチケット');
   const el = document.getElementById('kpiOptCards');
   if (!el) return;
   if (kpiAccessError || !kpiKaisu) {
