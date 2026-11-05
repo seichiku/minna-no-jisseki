@@ -1707,59 +1707,81 @@ function renderKpiStock() {
     return;
   }
 
-  const goal = CONFIG.KPI.SUB_GOAL;
+  // 2026-11-05 竹中指示: 目標（90名ゴール・院別月目標・進捗バー）を外し、現在の契約数とMRRのみ表示
   const totalRow = kpiFindRow(kpiMember, '全社');
   const enrolled = totalRow ? kpiNum(totalRow[1]) : 0;
   const mrr = totalRow ? kpiDisp(totalRow[2]) : '—';
-  const remain = Math.max(0, goal - enrolled);
-  const pct = Math.min(100, Math.round(enrolled / goal * 100));
-  // 院別の月目標：CONFIG.KPI.SUB_TARGETS の当月キー。無ければ直近の月を使い、その月名を表示（2026-09-14 ハードコード廃止）
-  const tgMap = CONFIG.KPI.SUB_TARGETS || {};
-  const ymNow = ymKey(0);
-  const tgKey = tgMap[ymNow] ? ymNow : Object.keys(tgMap).filter(k => k <= ymNow).sort().pop();
-  const targets = (tgKey && tgMap[tgKey]) || {};
-  const tgLabel = tgKey ? `${parseInt(tgKey.slice(5), 10)}月目標` : '目標';
-  const tgSum = Object.values(targets).reduce((a, b) => a + (Number(b) || 0), 0);
 
   meter.innerHTML = `
     <div class="kpi-meter-head">
       <span class="kpi-meter-now">${enrolled}</span>
-      <span class="kpi-meter-goal">/ ${goal} 名（12月ゴール）</span>
+      <span class="kpi-meter-goal">名（3院合計・現在の契約数）</span>
       <span class="kpi-meter-mrr">MRR ${mrr}</span>
-    </div>
-    <div class="kpi-bar big"><div class="kpi-bar-fill live" style="width:${pct}%"></div></div>
-    <div class="kpi-meter-foot">あと <b>${remain}</b> 名　｜　${tgLabel} 南砂${targets['南砂'] || '—'} / 塩浜${targets['塩浜'] || '—'} / 東砂${targets['東砂'] || '—'} ＝計${tgSum}</div>`;
+    </div>`;
 
-  // 院別 在籍 + MRR（当月目標つき）
+  // 院別 契約数 + MRR
   clinicEl.innerHTML = CONFIG.KPI.CLINICS.map(c => {
     const row = kpiFindRow(kpiMember, c);
     const n = row ? kpiNum(row[1]) : 0;
     const cmrr = row ? kpiDisp(row[2]) : '—';
-    const tgt = targets[c] || 0;
-    const cp = tgt ? Math.min(100, Math.round(n / tgt * 100)) : 0;
     return `
       <div class="kpi-card">
         <div class="kpi-card-label">${c}院</div>
         <div class="kpi-card-big">${n}<span class="kpi-card-unit">名</span></div>
-        <div class="kpi-bar"><div class="kpi-bar-fill live" style="width:${cp}%"></div></div>
-        <div class="kpi-card-sub">${tgLabel} ${tgt}名 ｜ MRR ${cmrr}</div>
+        <div class="kpi-card-sub">MRR ${cmrr}</div>
       </div>`;
   }).join('');
 }
 
 // ② ストック：鍼灸保険 受診者数（当月に保険種「鍼」で来院した実人数・柔整鍼灸の併用込み）
 //   データ元＝分析シート「フロー（3院）」の行「鍼灸保険 受診者数(実人数)」（構築GASが毎時集計 2026-10-17）
+//   2026-11-05 竹中指示: 12月末目標（母数）を CONFIG.KPI.ACU_GOAL から表示。全社メーター＋院別カード（現状→目標・あと何人）
 function renderKpiAcu() {
+  const meter = document.getElementById('kpiAcuMeter');
   const el = document.getElementById('kpiAcuCards');
   if (!el) return;
   const m = flowMetric('鍼灸保険 受診者数(実人数)');
-  if (!m) { el.innerHTML = `<div class="kpi-note">集計待ちです（毎時更新）。</div>`; return; }
-  el.innerHTML = CONFIG.KPI.CLINICS.map(c => `
+  const G = CONFIG.KPI.ACU_GOAL || { clinics: {} };
+  const gc = G.clinics || {};
+  const goalSum = CONFIG.KPI.CLINICS.reduce((a, c) => a + ((gc[c] || {}).goal || 0), 0);
+  const baseSum = CONFIG.KPI.CLINICS.reduce((a, c) => a + ((gc[c] || {}).base || 0), 0);
+  const nowSum = m ? CONFIG.KPI.CLINICS.reduce((a, c) => a + kpiNum(m[c]), 0) : null;
+
+  if (meter) {
+    if (nowSum === null) {
+      meter.innerHTML = `<div class="kpi-note">集計待ちです（毎時更新）。</div>`;
+    } else {
+      const remain = Math.max(0, goalSum - nowSum);
+      const pct = goalSum ? Math.min(100, Math.round(nowSum / goalSum * 100)) : 0;
+      meter.innerHTML = `
+        <div class="kpi-meter-head">
+          <span class="kpi-meter-now">${nowSum}</span>
+          <span class="kpi-meter-goal">/ ${goalSum} 人（${G.label || '目標'}の母数・3院）</span>
+          <span class="kpi-meter-mrr">${G.base_label || '基準'} ${baseSum}人 → +${goalSum - baseSum}人</span>
+        </div>
+        <div class="kpi-bar big"><div class="kpi-bar-fill ${remain === 0 ? 'green' : 'live'}" style="width:${pct}%"></div></div>
+        <div class="kpi-meter-foot">${remain === 0 ? '🟢 母数達成' : `あと <b>${remain}</b> 人`}　｜　${G.label || '目標'} 南砂${(gc['南砂'] || {}).goal || '—'} / 塩浜${(gc['塩浜'] || {}).goal || '—'} / 東砂${(gc['東砂'] || {}).goal || '—'} ＝計${goalSum}</div>`;
+    }
+  }
+
+  if (!m) { el.innerHTML = ''; return; }
+  el.innerHTML = CONFIG.KPI.CLINICS.map(c => {
+    const g = gc[c] || {};
+    const now = kpiNum(m[c]);
+    const goal = g.goal || 0;
+    const base = g.base || 0;
+    const remain = Math.max(0, goal - now);
+    const pct = goal ? Math.min(100, Math.round(now / goal * 100)) : 0;
+    const done = goal > 0 && remain === 0;
+    return `
       <div class="kpi-card">
         <div class="kpi-card-label">${c}院</div>
-        <div class="kpi-card-big">${kpiDisp(m[c])}</div>
+        <div class="kpi-card-big">${kpiDisp(m[c])}<span class="kpi-card-unit">/ ${goal}人</span></div>
+        <div class="kpi-bar"><div class="kpi-bar-fill ${done ? 'green' : 'live'}" style="width:${pct}%"></div></div>
+        <div class="kpi-card-sub">${done ? '🟢 母数達成' : 'あと <b>' + remain + '</b>人'} ｜ ${G.base_label || '基準'} ${base}人 → +${goal - base}人</div>
         <div class="kpi-card-sub">柔整鍼灸の併用込み</div>
-      </div>`).join('');
+      </div>`;
+  }).join('');
 }
 
 // ② ストック：オーダー回数券（施術者6名/人ゲージ・ライブ）

@@ -6,7 +6,7 @@
 <title>みんなの実績</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261104a">
+<link rel="stylesheet" href="style.css?v=20261105a">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -126,12 +126,14 @@
     <div class="section-title"><span class="icon">📦</span> ストック（サブスク・回数券）</div>
 
     <!-- 2026-11-02 竹中指示: 鍼灸保険を先頭、サブスクを2番目に入れ替え -->
+    <!-- 2026-11-05 竹中指示: 鍼灸保険に12月末目標（母数）を設定・サブスクは目標を外し契約数のみ表示 -->
     <div class="kpi-block">
       <h3 class="kpi-h">鍼灸保険 受診者数（当月・実人数）<span class="kpi-tag live">LIVE</span></h3>
+      <div class="kpi-meter" id="kpiAcuMeter"></div>
       <div class="kpi-cards" id="kpiAcuCards"></div>
     </div>
     <div class="kpi-block">
-      <h3 class="kpi-h">サブスク <span class="kpi-tag live">LIVE</span></h3>
+      <h3 class="kpi-h">サブスク（現在の契約数）<span class="kpi-tag live">LIVE</span></h3>
       <div class="kpi-meter" id="kpiSubMeter"></div>
       <div class="kpi-cards" id="kpiSubClinic"></div>
       <p class="section-desc" style="margin:14px 0 8px;"><b>施術者別 新規成約数（7月〜累計）</b></p>
@@ -161,8 +163,8 @@
   <div class="footer">&copy; 2026 みんなの実績（社内限定）</div>
 </div>
 
-<script src="config.js?v=20261104a"></script>
+<script src="config.js?v=20261105a"></script>
 <script src="history.js?v=20261029a"></script>
-<script src="app.js?v=20261104a"></script>
+<script src="app.js?v=20261105a"></script>
 </body>
 </html>
