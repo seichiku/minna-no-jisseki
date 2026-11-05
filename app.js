@@ -1784,8 +1784,26 @@ function renderKpiAcu() {
   }).join('');
 }
 
+// ② ストック：回数券の全体件数メーター（サブスクと同じ形・2026-11-05 竹中指示）
+//   データ元＝台帳サマリー上段の券種行（A=券種 / B=保有件数（有効のみ） / C=残回数合計 / D=残高金額＝前受金）
+function renderKaisuMeter(meterId, label, title) {
+  const meter = document.getElementById(meterId);
+  if (!meter) return;
+  if (kpiAccessError || !kpiKaisu) { meter.innerHTML = ''; return; }
+  const row = kpiFindRow(kpiKaisu, label);
+  if (!row) { meter.innerHTML = `<div class="kpi-note">台帳サマリーの「${label}」行が見つかりません。</div>`; return; }
+  meter.innerHTML = `
+    <div class="kpi-meter-head">
+      <span class="kpi-meter-now">${kpiNum(row[1])}</span>
+      <span class="kpi-meter-goal">件（3院合計・${title}）</span>
+      <span class="kpi-meter-mrr">前受金 ${kpiDisp(row[3])}</span>
+    </div>
+    <div class="kpi-meter-foot">残回数合計 <span style="font-weight:700;color:var(--text)">${kpiDisp(row[2])}</span> 回　｜　保有＝有効な券のみ（失効・消化済は除く）</div>`;
+}
+
 // ② ストック：オーダー回数券（施術者6名/人ゲージ・ライブ）
 function renderKpiOrder() {
+  renderKaisuMeter('kpiOrderMeter', 'オーダー', '保有中のオーダー回数券');
   const el = document.getElementById('kpiOrderGauges');
   if (!el) return;
   if (kpiAccessError || !kpiKaisu) {
@@ -1867,6 +1885,7 @@ function renderKpiChurn() {
 
 // ストック: 施術者別オプションチケット保有（台帳サマリーのオプチケ保有列＝E列をミラー。目標なしの現況表示 2026-08-21）
 function renderKpiOpt() {
+  renderKaisuMeter('kpiOptMeter', 'オプチケ', '保有中のオプションチケット');
   const el = document.getElementById('kpiOptCards');
   if (!el) return;
   if (kpiAccessError || !kpiKaisu) {

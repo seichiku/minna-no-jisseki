@@ -6,7 +6,7 @@
 <title>みんなの実績</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20261105a">
+<link rel="stylesheet" href="style.css?v=20261105b">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
@@ -139,8 +139,11 @@
       <p class="section-desc" style="margin:14px 0 8px;"><b>施術者別 新規成約数（7月〜累計）</b></p>
       <div class="kpi-gauges" id="kpiSubStaff"></div>
     </div>
+    <!-- 2026-11-05 竹中指示: オーダー回数券・オプションチケットも全体の件数をサブスクと同様にメーター表示 -->
     <div class="kpi-block">
-      <h3 class="kpi-h">オーダー回数券（目標6名/施術者）<span class="kpi-tag live">LIVE</span></h3>
+      <h3 class="kpi-h">オーダー回数券（保有中の件数）<span class="kpi-tag live">LIVE</span></h3>
+      <div class="kpi-meter" id="kpiOrderMeter"></div>
+      <p class="section-desc" style="margin:14px 0 8px;"><b>施術者別 保有（目標6名/施術者）</b></p>
       <div class="kpi-gauges" id="kpiOrderGauges"></div>
     </div>
     <div class="kpi-block">
@@ -148,7 +151,9 @@
       <div class="kpi-cards" id="kpiChurnCards"></div>
     </div>
     <div class="kpi-block">
-      <h3 class="kpi-h">オプションチケット（施術者別保有）<span class="kpi-tag live">LIVE</span></h3>
+      <h3 class="kpi-h">オプションチケット（保有中の件数）<span class="kpi-tag live">LIVE</span></h3>
+      <div class="kpi-meter" id="kpiOptMeter"></div>
+      <p class="section-desc" style="margin:14px 0 8px;"><b>施術者別 保有</b></p>
       <div class="kpi-gauges" id="kpiOptCards"></div>
     </div>
   </div>
@@ -163,8 +168,8 @@
   <div class="footer">&copy; 2026 みんなの実績（社内限定）</div>
 </div>
 
-<script src="config.js?v=20261105a"></script>
+<script src="config.js?v=20261105b"></script>
 <script src="history.js?v=20261029a"></script>
-<script src="app.js?v=20261105a"></script>
+<script src="app.js?v=20261105b"></script>
 </body>
 </html>
