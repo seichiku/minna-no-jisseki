@@ -2558,14 +2558,17 @@ function shokaiGoalHtml(name) {
   const tr = (label, x, bold) => {
     const pct = x.month > 0 ? Math.round(x.act / x.month * 100) : 0;
     return `<tr${bold ? ' style="font-weight:700"' : ''}><td class="ft-label">${escHtml(label)}</td>
+      <td><span class="pd-val">${escHtml(x.perDay || '—')}</span><span class="pd-sub">件 / 日</span></td>
       <td><span class="pd-val${pct >= 100 ? ' hit' : ''}">${x.act}</span><span class="pd-sub">/ ${x.month}件（${pct}%）</span></td>
-      <td><span class="pd-val">${x.today}</span><span class="pd-sub">件${x.perDay ? ` / 1日の目標 ${escHtml(x.perDay)}` : ''}</span></td>
+      <td><span class="pd-val">${x.today}</span><span class="pd-sub">件</span></td>
       <td><span class="pd-val">${Math.max(0, x.month - x.act)}</span><span class="pd-sub">件</span></td></tr>`;
   };
+  // 院合計の1日の目標＝この院を主所属（院欄の先頭）とする人の1日の目標の合計
+  if (total) { const sum = Object.values(by).filter(x => x.clinics.split('・')[0] === name).reduce((a, x) => a + (parseFloat(x.perDay) || 0), 0); total.perDay = sum ? String(Math.round(sum * 10) / 10) : ''; }
   const rows = staff.map(s => tr(by[s].clinics.includes('・') ? `${s}（3院計）` : s, by[s], false)).join('') + (total ? tr(`${name} 合計`, total, true) : '');
   return `<div class="kpi-block"><h3 class="kpi-h">紹介の声かけ（目標と実績）<span class="pd-goal">${upd ? `更新 ${escHtml(upd)}・` : ''}毎時更新</span></h3>
       <div class="flow-table-wrap"><table class="flow-table pd-table">
-        <thead><tr><th>施術者</th><th>今月の実績 / 月間目標</th><th>今日</th><th>月間目標まであと</th></tr></thead>
+        <thead><tr><th>施術者</th><th>1日の目標</th><th>今月の実績 / 月間目標</th><th>今日</th><th>月間目標まであと</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
       <div class="pd-note">目標＝社員旅行で決めた行動計画の月間目標・1日の目標。実績＝日計表の「紹介声かけ」✔。声をかけたら✔を入れると、次の毎時更新で数字が動きます。</div></div>`;
