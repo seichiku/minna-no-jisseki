@@ -1630,7 +1630,7 @@ function renderClinicPages() {
     // 2026-10-29: 今月の状況の直後に「離反（目標11%）・あと何人」→ その対象者＝離客フォローリスト の順
     // 2026-11-02: 個人の日次2指標の直下に「トライアル枠（今月の残り）」
     // 2026-11-04: 離反カードの直下に「先月来院・今月まだ」名簿（＝目標まであと◯人の対象者・来院すると毎時消える）→ 離客フォローリスト
-    el.innerHTML = pdBlockHtml(name, idx) + trialQuotaHtml(name) + actionLinksHtml(name) + month + rihanGoalHtml(name, p) + prevMonthListHtml(name) + rihanListHtml(name) + `
+    el.innerHTML = pdBlockHtml(name, idx) + trialQuotaHtml(name) + shokaiGoalHtml(name) + actionLinksHtml(name) + month + rihanGoalHtml(name, p) + prevMonthListHtml(name) + rihanListHtml(name) + `
       <details class="more">
         <summary>月の推移・補助指標・件数の記録を見る</summary>
         ${detail}
@@ -2530,6 +2530,45 @@ function trialQuotaHtml(name) {
         <tbody>${rows}</tbody>
       </table></div>
       <div class="pd-note">${tq.label}。日計表の自費①〜④に入れた「トライアル○○」を実施として数えます（トライアルメンテナンス／美容鍼／エルビオ＝サブスク無料、トライアル鍼灸＝鍼灸保険無料、トライアルオーダー＝枠外）。残った枠は当月で終了。上限超え・同じ人に2回目・別価格は実行前に竹中へ相談。</div>`);
+}
+
+// ============================================================
+// 紹介の声かけ 目標と実績 — 各院ページ「トライアル枠」の直下（2026-11-11 竹中指示）
+//   元データ＝提案ファネルタブ末尾「紹介声かけ 目標と実績」ブロック（構築GAS sg_write_ が毎時書く）。
+//   列: 月 / 施術者 / 院 / 月間目標 / 1日の目標 / 出勤日数(今日まで) / ここまでの目標 / 実績 / 今日の実績 / 達成率
+//   目標＝行動計画（社員旅行で決めた数字）。実績＝日計表「紹介声かけ」✔。施術者「院合計」＝その院の行。
+//   表示は 今月の実績/月間目標・今日/1日の目標・月間目標まであと（出勤日数・ここまでの目標は出さない＝竹中指示）。
+// ============================================================
+function shokaiGoalHtml(name) {
+  const g = kpiPersonalGrid;
+  if (kpiPersonalError || !g) return '';
+  const cell = (i, j) => String(((g[i] || [])[j]) || '').trim();
+  let si = -1;
+  for (let i = 0; i < g.length; i++) { if (cell(i, 0).startsWith('紹介声かけ 目標と実績')) { si = i; break; } }
+  if (si < 0) return '';
+  const upd = (cell(si, 0).match(/更新 ([\d\/]+ [\d:]+)/) || [])[1] || '';
+  const by = {}; let total = null;
+  for (let i = si + 2; i < g.length; i++) {
+    if (!cell(i, 0)) break;
+    const x = { clinics: cell(i, 2), month: kpiNum(cell(i, 3)), perDay: cell(i, 4), toDate: kpiNum(cell(i, 6)), act: kpiNum(cell(i, 7)), today: kpiNum(cell(i, 8)), rate: cell(i, 9) };
+    if (cell(i, 1) === '院合計') { if (x.clinics === name) total = x; } else by[cell(i, 1)] = x;
+  }
+  const staff = clinicStaffAny(name).filter(s => by[s]);
+  if (!staff.length && !total) return '';
+  const tr = (label, x, bold) => {
+    const pct = x.month > 0 ? Math.round(x.act / x.month * 100) : 0;
+    return `<tr${bold ? ' style="font-weight:700"' : ''}><td class="ft-label">${escHtml(label)}</td>
+      <td><span class="pd-val${pct >= 100 ? ' hit' : ''}">${x.act}</span><span class="pd-sub">/ ${x.month}件（${pct}%）</span></td>
+      <td><span class="pd-val">${x.today}</span><span class="pd-sub">件${x.perDay ? ` / 1日の目標 ${escHtml(x.perDay)}` : ''}</span></td>
+      <td><span class="pd-val">${Math.max(0, x.month - x.act)}</span><span class="pd-sub">件</span></td></tr>`;
+  };
+  const rows = staff.map(s => tr(by[s].clinics.includes('・') ? `${s}（3院計）` : s, by[s], false)).join('') + (total ? tr(`${name} 合計`, total, true) : '');
+  return `<div class="kpi-block"><h3 class="kpi-h">紹介の声かけ（目標と実績）<span class="pd-goal">${upd ? `更新 ${escHtml(upd)}・` : ''}毎時更新</span></h3>
+      <div class="flow-table-wrap"><table class="flow-table pd-table">
+        <thead><tr><th>施術者</th><th>今月の実績 / 月間目標</th><th>今日</th><th>月間目標まであと</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="pd-note">目標＝社員旅行で決めた行動計画の月間目標・1日の目標。実績＝日計表の「紹介声かけ」✔。声をかけたら✔を入れると、次の毎時更新で数字が動きます。</div></div>`;
 }
 
 function renderPersonalRanking() {
