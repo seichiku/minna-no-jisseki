@@ -2567,7 +2567,7 @@ function shokaiGoalHtml(name) {
   if (total) { const sum = Object.values(by).filter(x => x.clinics.split('・')[0] === name).reduce((a, x) => a + (parseFloat(x.perDay) || 0), 0); total.perDay = sum ? String(Math.round(sum * 10) / 10) : ''; }
   const rows = staff.map(s => tr(by[s].clinics.includes('・') ? `${s}（3院計）` : s, by[s], false)).join('') + (total ? tr(`${name} 合計`, total, true) : '');
   return `<div class="kpi-block"><h3 class="kpi-h">紹介の声かけ（目標と実績）<span class="pd-goal">${upd ? `更新 ${escHtml(upd)}・` : ''}毎時更新</span></h3>
-      <div class="flow-table-wrap"><table class="flow-table pd-table">
+      <div class="flow-table-wrap"><table class="flow-table pd-table" style="table-layout:fixed;width:100%"><colgroup><col style="width:20%"><col style="width:20%"><col style="width:20%"><col style="width:20%"><col style="width:20%"></colgroup>
         <thead><tr><th>施術者</th><th>1日の目標</th><th>今月の実績 / 月間目標</th><th>今日</th><th>月間目標まであと</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
