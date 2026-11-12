@@ -80,6 +80,7 @@ var SHEET_SPECS = [
   [ANALYSIS_ID, 'モニタ_患者名簿'],      // 「先月来院・今月まだ」名簿（構築GAS rihanCounts_ が毎時書く非表示タブ。当月の「YYYY-MM|院|離客1」列だけ返す 2026-11-04）
   [WEEKLY_ID,   'GBP(3店舗)'],          // 口コミ回収の現状（クチコミ累計/週増分/評価・毎週水曜更新）
   [TAC_ID,      '行動ログ'],             // 先行指標の生ログ＝各自の育成シート「戦術記録」を統合（キー名は互換のため旧名のまま 2026-09-14）
+  [TAC_ID,      '行動計画'],             // 各自の育成シート「N月 行動計画」の月間目標と実績合計を統合（各院ページ「件数の記録」2026-11-12）
   [ASA_ID,      '2026/8/28~'],          // 朝の仕込み＝今日の宣言（2026-08-27 質問改定で新シート化・日付入り名。質問改定ごとに紐づけ直し→ここを新タブ名に更新）
 ];
 
@@ -168,6 +169,8 @@ function readBundle_(forceRefresh) {
           // 2026-09-14: 旧戦術ダッシュボードは廃止。各自の育成シート「戦術記録」を
           // 統合して従来スキーマで返す（キー "TAC_ID|行動ログ" はLP互換のため据え置き）。
           grid = readIkuseiTactics_();
+        } else if (id === TAC_ID && name === '行動計画') {
+          grid = readIkuseiPlan_();
         } else {
           var sh = ss.getSheetByName(name);
           // 「フロー（3院）」はタブ名に月が付く（例: フロー（3院）2026年8月）→プレフィックス一致で解決
@@ -298,6 +301,43 @@ function readIkuseiTactics_() {
         row[6] = String(disp[r][4] || '').trim();   // カテゴリ(自動)
         out.push(row);
       }
+      okNames.push(p.name);
+    } catch (e) {
+      ngNames.push(p.name);
+    }
+  }
+  out[0][1] = okNames.join('・');
+  out[0][2] = ngNames.join('・');
+  return out;
+}
+
+// 各自の育成シート「N月 行動計画」タブ（N＝今月）から、行動量の「自分の月間目標」（C列）と
+// 「N月合計」行の実績（提案D・LINE F・ロープレG・鍛錬H・紹介の声かけI）を全員分まとめて返す（2026-11-12 竹中指示）。
+// 行はA列の見出しで探す（行位置が動いても読める）。タブが無い人は行を出さない（LPは「計画なし」と表示）。
+// 0行目=[ラベル, 読めた人, 読めなかった人, 月]／1行目=見出し／以降 [氏名, 目標×5, 実績×5]。
+function readIkuseiPlan_() {
+  var month = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'M') + '月';
+  var labels = ['提案', 'LINE発信', 'ロープレ', '鍛錬', '紹介の声かけ'];
+  var okNames = [], ngNames = [];
+  var out = [
+    ['行動計画（育成シート・全員統合）', '', '', month],
+    ['担当者'].concat(labels.map(function (l) { return l + ' 目標'; }), labels.map(function (l) { return l + ' 実績'; }))
+  ];
+  for (var i = 0; i < IKUSEI.length; i++) {
+    var p = IKUSEI[i];
+    try {
+      var sh = SpreadsheetApp.openById(p.id).getSheetByName(month + ' 行動計画');
+      if (!sh) continue;
+      var v = sh.getRange(1, 1, Math.min(sh.getLastRow(), 80), 9).getDisplayValues();
+      var goals = ['', '', '', '', ''], total = null;
+      for (var r = 0; r < v.length; r++) {
+        var a = String(v[r][0] || '').trim();
+        var k = labels.indexOf(a);
+        if (k >= 0 && goals[k] === '') goals[k] = String(v[r][2] || '').trim();
+        if (a === month + '合計') total = v[r];
+      }
+      if (!total) { ngNames.push(p.name + '(合計行なし)'); continue; }
+      out.push([p.name].concat(goals, [total[3], total[5], total[6], total[7], total[8]]));
       okNames.push(p.name);
     } catch (e) {
       ngNames.push(p.name);

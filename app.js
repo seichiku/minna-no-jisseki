@@ -728,6 +728,7 @@ let kpiMasterError = false;   // 顧客マスタ共有エラー
 let kpiMeibo = null;          // 分析シート「モニタ_患者名簿」（先月来院・今月まだ の名簿。中継APIが当月の離客1列だけ返す 2026-11-04）
 let kpiKuchikomi = null;      // 週次効果測定「GBP(3店舗)」grid（口コミ回収の現状 2026-08-22）
 let kpiActLog = null;         // 戦術ダッシュボード「行動ログ」grid（提案/LINE/ロープレの実行 2026-08-27）
+let kpiPlan = null;           // 各自の育成シート「N月 行動計画」の統合（月間目標と実績合計 2026-11-12）
 let kpiPd = null;             // 分析シート「個人日次」grid（日別×院×施術者の実労働h・コマ・個人売上 2026-09-30）
 
 async function loadKpiData() {
@@ -802,6 +803,13 @@ async function loadKpiData() {
   } catch (err) {
     console.warn('個人日次 読込失敗:', err);
     kpiPd = null;
+  }
+  // 当月の行動計画（各自の育成シート「N月 行動計画」タブを中継APIが統合。取得できなくても他は出す 2026-11-12）
+  try {
+    kpiPlan = await fetchSheet(CONFIG.ACTIONS.TAC_ID, CONFIG.ACTIONS.PLAN_SHEET);
+  } catch (err) {
+    console.warn('行動計画 読込失敗:', err);
+    kpiPlan = null;
   }
 }
 
@@ -1920,74 +1928,71 @@ function renderKpiOpt() {
   el.innerHTML = any ? cards.join('') : `<div class="kpi-note">台帳サマリーのオプチケ列が見つかりません。</div>`;
 }
 
+// チーム実績の主要指標（2026-11-12 竹中指示: 提案・LINE・練習・口コミの件数カードから差し替え）
+//   上段＝3店舗の離反率（目標11%以下）／全スタッフの稼働率（目標80%）／全スタッフのコマ単価（目標¥2,000）
+//   下段＝各店舗の鍼灸保険 獲得数（＝当月の受診者数 − 10月確定。目標＝ACU_GOAL の goal − base）
+//   離反率＝フロー（3院）「離反率」行の全社列（3院合計の1ヶ月離反数÷先月全患者数）。
+//   稼働率・コマ単価＝「個人日次」の当月・前日までを全員分合計して割る（当日は入力途中なので含めない）。
 function renderKpiLeading() {
   const el = document.getElementById('kpiLeading');
   if (!el) return;
-
-  // 戦術（先行指標）タブから 全社合計＋目標 を取得
-  function tRow(label) {
-    if (!kpiTactics) return null;
-    for (const r of kpiTactics) { if (r && String(r[0] || '').trim() === label) return r; }
-    return null;
-  }
-  function tacticCard(title, label) {
-    const r = tRow(label);
-    if (r) {
-      const val = kpiDisp(r[4]);  // E列=全社
-      const g = String(r[5] == null ? '' : r[5]).trim();  // F列=目標(月)
-      const goal = (g === '' || g === '—') ? '' : `<span class="kpi-card-unit"> / 目標 ${g}</span>`;
-      return `<div class="kpi-card">
-          <div class="kpi-card-label">${title}</div>
-          <div class="kpi-card-big">${val}${goal}</div>
-          <div class="kpi-card-sub"><span class="kpi-tag live">LIVE</span></div>
-        </div>`;
-    }
-    return `<div class="kpi-card">
-        <div class="kpi-card-label">${title}</div>
-        <div class="kpi-card-big muted">—</div>
-        <div class="kpi-card-sub"><span class="kpi-tag wait">戦術記録の読込待ち</span></div>
-      </div>`;
-  }
-
-  // 2026-08-27: 行動ログから直接ライブ集計（13/21時のGAS更新を待たない）。
-  // ログが読めない時は従来どおり分析シート「戦術（先行指標）」の値にフォールバック。
-  const st = actStats();
-  // 全社目標＝1人あたり月目標 × 施術者数（2026-08-27 竹中決定: 転換50/LINE50/ロープレ22/鍛錬22 per 人）
-  const G = CONFIG.ACTIONS.GOALS_PP || { tenkan: 50, line: 50, rope: 22, tanren: 22 };
-  const N = (CONFIG.KPI.STAFF || []).length || 6;
-  const card = (label, val, goal, sub) => `<div class="kpi-card">
+  const pctNum = v => parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, ''));
+  const sig = b => b === 'green' ? '🟢' : (b === 'yellow' ? '🟡' : '🔴');
+  const card = (band, label, val, goal, sub) => `<div class="kpi-card ${band ? 'budget-' + band : ''}">
       <div class="kpi-card-label">${label}</div>
-      <div class="kpi-card-big">${val}<span class="kpi-card-unit"> / 目標 ${goal}</span></div>
-      <div class="kpi-card-sub">${sub}<span class="kpi-tag live">LIVE</span></div>
+      <div class="kpi-card-big${band ? '' : ' muted'}">${val}<span class="kpi-card-unit"> / 目標 ${goal}</span> ${band ? sig(band) : ''}</div>
+      <div class="kpi-card-sub">${sub}</div>
     </div>`;
-  // 提案数＝提案ファネル（日計表の提案列）の全社行。個人ランキングと同じ数字（2026-10-09 竹中指示）
-  const fs = funnelStats();
-  let html;
-  if (fs && fs.total) {
-    html = `<div class="kpi-card">
-      <div class="kpi-card-label">提案数（全社・今月）</div>
-      <div class="kpi-card-big">${fs.total.teian}<span class="kpi-card-unit"> / 目標 ${G.tenkan * N}（${G.tenkan}件/人）</span></div>
-      <div class="kpi-card-sub">${escHtml(fs.total.breakdown)}　出どころ: 日計表の提案列（個人ランキングと同じ）</div>
-    </div>`;
-  } else {
-    html = `<div class="kpi-card">
-      <div class="kpi-card-label">提案数（全社・今月）</div>
-      <div class="kpi-card-big muted">—</div>
-      <div class="kpi-card-sub"><span class="kpi-tag wait">提案ファネルの読込待ち</span></div>
-    </div>`;
-  }
-  if (st) {
-    html += card('LINE 発信数（全社・今月）', st.total.line, `${G.line * N}（${G.line}件/人）`, '');
-    html += card('ロープレ 実施数（全社・今月）', st.total.rope, `${G.rope * N}（出勤日は毎日）`, '');
-    html += card('鍛錬 実施数（全社・今月）', st.total.tanren, `${G.tanren * N}（出勤日は毎日）`, '');
-    html += actSourceNote();   // 出どころ（育成シート「戦術記録」・読めた人/読めなかった人）
-  } else {
-    html += tacticCard('LINE 発信数（全社・今月）', 'LINE 発信数');
-    html += tacticCard('ロープレ 実施数（全社・今月）', 'ロープレ 実施数');
-  }
-  // 口コミ回収（毎月3件目標/店舗・週次効果測定のGBPタブから 2026-08-22）
-  html += kuchikomiCards();
-  el.innerHTML = html;
+  const wait = '<span class="kpi-tag wait">集計待ち</span>';
+
+  // ① 離反率（3店舗合計）
+  const T = CONFIG.KPI.RIHAN_TARGET_PCT;
+  let rihanRow = null;
+  if (kpiFlow) for (const r of kpiFlow) { if (r && String(r[0] || '').trim() === '離反率') { rihanRow = r; break; } }
+  const rv = rihanRow ? pctNum(rihanRow[4]) : NaN;
+  let top = isNaN(rv)
+    ? card('', '離反率（3店舗）', '—', `${T}%以下`, wait)
+    : card(rv <= T ? 'green' : (rv <= T + 4 ? 'yellow' : 'red'), '離反率（3店舗）', rv + '%', `${T}%以下`,
+        `南砂 ${kpiDisp(rihanRow[1])}・塩浜 ${kpiDisp(rihanRow[2])}・東砂 ${kpiDisp(rihanRow[3])}`);
+
+  // ②③ 稼働率・コマ単価（全スタッフ・当月・前日まで）
+  const G = CONFIG.KPI.PD_GOAL || { rate: 80, unit: 2000 };
+  const pd = pdData();
+  const ym = ymKey(0), today = dayKey(0);
+  let koma = 0, cap = 0, sales = 0, komaT = 0, last = '';
+  if (pd) Object.keys(pd.by).forEach(c => Object.keys(pd.by[c]).forEach(d => {
+    if (d.slice(0, 7) !== ym || d >= today) return;
+    pd.by[c][d].forEach(x => {
+      if (x.hours > 0 && (x.koma > 0 || x.pt > 0)) { koma += x.koma; cap += x.hours * 6; }
+      if (x.komaT > 0) { sales += x.sales; komaT += x.komaT; }
+      if ((x.koma > 0 || x.pt > 0) && d > last) last = d;
+    });
+  }));
+  const range = last ? `${Number(ym.slice(5))}/1〜${pdDateLabel(last)}の全員分` : '';
+  if (cap > 0) {
+    const p = Math.round(koma / cap * 1000) / 10;
+    top += card(paceBand(p / G.rate * 100), '稼働率（全スタッフ）', p + '%', `${G.rate}%`, range);
+  } else top += card('', '稼働率（全スタッフ）', '—', `${G.rate}%`, wait);
+  if (komaT > 0) {
+    const u = sales / komaT;
+    top += card(paceBand(u / G.unit * 100), 'コマ単価（全スタッフ）', yenFmt(u), yenFmt(G.unit), range);
+  } else top += card('', 'コマ単価（全スタッフ）', '—', yenFmt(G.unit), wait);
+
+  // ④ 鍼灸保険 獲得数（院別）
+  const A = CONFIG.KPI.ACU_GOAL || { clinics: {} };
+  const m = flowMetric('鍼灸保険 受診者数(実人数)');
+  const bottom = CONFIG.KPI.CLINICS.map(c => {
+    const g = (A.clinics || {})[c] || {};
+    const goal = (g.goal || 0) - (g.base || 0);
+    if (!m) return card('', `鍼灸保険 獲得数（${c}）`, '—', `${goal}人`, wait);
+    const now = kpiNum(m[c]);
+    const got = Math.max(0, now - (g.base || 0));
+    return card(got >= goal ? 'green' : (got > 0 ? 'yellow' : 'red'), `鍼灸保険 獲得数（${c}）`, `+${got}人`, `${goal}人`,
+      `今月の受診者 ${now}人（${A.base_label || '基準'} ${g.base || 0}人）`);
+  }).join('');
+
+  el.innerHTML = `<div class="kpi-cards">${top}</div><div class="kpi-cards" style="margin-top:14px">${bottom}</div>`
+    + `<div class="kpi-cards" style="margin-top:14px">${kuchikomiCards()}</div>`;   // 口コミ回収は従来どおり（毎月3件目標/店舗・週次効果測定のGBPタブ）
 }
 
 // ── 口コミ回収の現状（当月件数＝当月最新のクチコミ累計 − 前月最後のクチコミ累計） ──
@@ -2179,40 +2184,40 @@ function actionLinksHtml(name) {
     </div>`;
 }
 
-// 件数の記録（育成シート「戦術記録」の当月分）。詳細の中に表示する。
-// 日報の実行チェックとは別物＝ここは件数の記録。読めない・記録が無い人を 0 と表示しない。
-// 2026-10-09 竹中指示「個人ランキングに合わせる」: 提案列は提案ファネル（日計表の提案列）の件数に差し替え。
-// LINE発信・ロープレ・鍛錬は日計表に無いので戦術記録のまま。
+// 件数の記録（当月）＝各自の育成シート「N月 行動計画」タブ（2026-11-12 竹中指示）。
+//   目標＝「行動量」表の自分の月間目標、実績＝「毎日の実績」の月合計。中継APIが全員分を統合して返す
+//   （0行目=[ラベル, 読めた人, 読めなかった人, 月]／1行目=見出し／以降 [氏名, 目標×5, 実績×5]）。
+//   行動計画タブが無い人・読めない人を 0 と表示しない。
 function tacticsCountsHtml(name) {
   const staffList = clinicStaffAny(name);
   if (!staffList.length) return '';
-  const st = actStats();
-  const fs = funnelStats();
+  const by = {};
+  if (kpiPlan) for (let i = 2; i < kpiPlan.length; i++) { const r = kpiPlan[i] || []; if (r[0]) by[String(r[0]).trim()] = r; }
+  const head = (kpiPlan && kpiPlan[0]) || [];
+  const month = String(head[3] || '').trim();
   const A = CONFIG.ACTIONS;
-  const G = A.GOALS_PP || { tenkan: 50, line: 50, rope: 22, tanren: 22 };
   let rows = '';
   staffList.forEach(s => {
-    const m = st && st.byStaff[s] ? st.byStaff[s].month : null;
-    const f = fs ? fs.byStaff[s] : null;
+    const r = by[s];
     const url = (A.IKUSEI_URLS || {})[s];
     const nameCell = url ? `<a href="${url}" target="_blank" rel="noopener">${escHtml(s)}</a>` : escHtml(s);
-    const cell = (v, g) => m ? `${v}<span class="dv-detail"> / ${g}</span>` : '<span class="dv-muted">記録なし</span>';
-    const teianCell = fs ? `${f ? f.teian : 0}<span class="dv-detail"> / ${G.tenkan}</span>` : '<span class="dv-muted">読込待ち</span>';
-    rows += `<tr><td class="ft-label">${nameCell}</td>
-      <td>${teianCell}</td><td>${cell(m ? m.line : 0, G.line)}</td>
-      <td>${cell(m ? m.rope : 0, G.rope)}</td><td>${cell(m ? m.tanren : 0, G.tanren)}</td></tr>`;
+    let cells = '';
+    for (let k = 0; k < 5; k++) {
+      if (!r) { cells += '<td><span class="dv-muted">計画なし</span></td>'; continue; }
+      const goal = String(r[1 + k] == null ? '' : r[1 + k]).trim();
+      cells += `<td>${kpiNum(r[6 + k])}<span class="dv-detail"> / ${goal === '' ? '—' : escHtml(goal)}</span></td>`;
+    }
+    rows += `<tr><td class="ft-label">${nameCell}</td>${cells}</tr>`;
   });
-  const note = (fs
-    ? '提案＝日計表の「提案」列から集計した当月の件数（個人ランキングと同じ数字・兼務者は全院の合計・13時/21時更新）。'
-    : '提案＝提案ファネル（分析シート）が読めていません。')
-    + (st
-    ? 'LINE発信・ロープレ・鍛錬＝育成シート「戦術記録」に入力された当月の件数。実行したかは夜の日報で答えます。'
-    : 'LINE発信・ロープレ・鍛錬＝育成シート「戦術記録」が読めていません（中継APIの共有を確認）。');
+  const ng = String(head[2] || '').trim();
+  const note = kpiPlan
+    ? `実績 / 自分の月間目標。出どころ: 育成シート「${escHtml(month)} 行動計画」` + (ng ? `<span class="kpi-tag wait" style="margin-left:6px;">読めないシート: ${escHtml(ng)}</span>` : '')
+    : '育成シートの行動計画が読めていません。';
   return `
     <div class="kpi-block">
       <h3 class="kpi-h">件数の記録（当月）</h3>
       <div class="flow-table-wrap"><table class="flow-table">
-        <thead><tr><th>施術者</th><th>提案</th><th>LINE発信</th><th>ロープレ</th><th>鍛錬</th></tr></thead>
+        <thead><tr><th>施術者</th><th>提案</th><th>LINE発信</th><th>ロープレ</th><th>鍛錬</th><th>紹介の声かけ</th></tr></thead>
         <tbody>${rows}</tbody>
       </table></div>
       <div class="pd-note">${note}</div>

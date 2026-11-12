@@ -172,6 +172,7 @@ const CONFIG = {
   ACTIONS: {
     TAC_ID: '1Xwdlni7dCWkeFGu5NSvuwzTxMbCni5aR7Pdqm_zhFg8',  // 互換キー用（旧戦術ダッシュボードのID。中継APIはこのキーで育成シート統合を返す）
     LOG_SHEET: '行動ログ',
+    PLAN_SHEET: '行動計画',   // 各自の育成シート「N月 行動計画」の統合（中継APIのキー "TAC_ID|行動計画"。各院ページ「件数の記録」2026-11-12）
     LOG_COL: { date: 0, clinic: 1, staff: 2, kind: 3, count: 4, cat: 6 },  // 中継APIが統合済み（0行目=出どころ、1行目=見出し）
     SOURCE_LABEL: '育成シート「戦術記録」',
     // 各自の育成シート（宣言vs実行の表から本人のシートへ飛ぶ）。中継API Code.gs の IKUSEI と揃える
