@@ -1930,7 +1930,7 @@ function renderKpiOpt() {
 
 // チーム実績の主要指標（2026-11-12 竹中指示: 提案・LINE・練習・口コミの件数カードから差し替え）
 //   上段＝3店舗の離反率（目標11%以下）／全スタッフの稼働率（目標80%）／全スタッフのコマ単価（目標¥2,000）
-//   下段＝各店舗の鍼灸保険 獲得数（＝当月の受診者数 − 10月確定。目標＝ACU_GOAL の goal − base）
+//   下段＝各店舗の鍼灸保険 獲得数（＝10月に未受診で11月以降に受診した実人数。目標＝ACU_GOAL の goal − base）
 //   離反率＝フロー（3院）「離反率」行の全社列（3院合計の1ヶ月離反数÷先月全患者数）。
 //   稼働率・コマ単価＝「個人日次」の当月・前日までを全員分合計して割る（当日は入力途中なので含めない）。
 function renderKpiLeading() {
@@ -1978,17 +1978,17 @@ function renderKpiLeading() {
     top += card(paceBand(u / G.unit * 100), 'コマ単価（全スタッフ）', yenFmt(u), yenFmt(G.unit), range);
   } else top += card('', 'コマ単価（全スタッフ）', '—', yenFmt(G.unit), wait);
 
-  // ④ 鍼灸保険 獲得数（院別）
+  // ④ 鍼灸保険 獲得数（院別）＝10月に鍼灸保険の来院が無く、11月以降に鍼灸保険で来院した実人数
+  //   （フロー（3院）「鍼灸保険 新規獲得数(10月比)」行。構築GASが毎時集計 2026-11-12）
   const A = CONFIG.KPI.ACU_GOAL || { clinics: {} };
-  const m = flowMetric('鍼灸保険 受診者数(実人数)');
+  const m = flowMetric('鍼灸保険 新規獲得数(10月比)');
   const bottom = CONFIG.KPI.CLINICS.map(c => {
     const g = (A.clinics || {})[c] || {};
     const goal = (g.goal || 0) - (g.base || 0);
-    if (!m) return card('', `鍼灸保険 獲得数（${c}）`, '—', `${goal}人`, wait);
-    const now = kpiNum(m[c]);
-    const got = Math.max(0, now - (g.base || 0));
-    return card(got >= goal ? 'green' : (got > 0 ? 'yellow' : 'red'), `鍼灸保険 獲得数（${c}）`, `+${got}人`, `${goal}人`,
-      `今月の受診者 ${now}人（${A.base_label || '基準'} ${g.base || 0}人）`);
+    if (!m || !/\d/.test(String(m[c]))) return card('', `鍼灸保険 獲得数（${c}）`, '—', `${goal}人`, wait);
+    const got = kpiNum(m[c]);
+    return card(got >= goal ? 'green' : (got > 0 ? 'yellow' : 'red'), `鍼灸保険 獲得数（${c}）`, `${got}人`, `${goal}人`,
+      '11月以降に新しく受け始めた方');
   }).join('');
 
   el.innerHTML = `<div class="kpi-cards">${top}</div><div class="kpi-cards" style="margin-top:14px">${bottom}</div>`
