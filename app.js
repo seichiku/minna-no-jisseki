@@ -1203,6 +1203,17 @@ function rihanBuckets(clinicName) {
   const C = CONFIG.RIHAN.COL, R = CONFIG.RIHAN;
   const today = new Date();
   const t0 = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  // 2026-11-16 竹中指示: 他院のほうが最近来ている人は出さない（氏名で照合・統合済の行は見ない）
+  const norm = s => String(s || '').replace(/[\s　]/g, '');
+  const latest = {};
+  for (let i = 1; i < kpiMaster.length; i++) {
+    const row = kpiMaster[i] || [];
+    const clinic = String(row[C.clinic] || '').trim();
+    if (!clinic || clinic === '統合済') continue;
+    const d = parseVisitDate(row[C.lastVisit]);
+    const k = norm(row[C.name]);
+    if (d && k && (!latest[k] || d > latest[k])) latest[k] = d;
+  }
   for (let i = 1; i < kpiMaster.length; i++) {
     const row = kpiMaster[i] || [];
     const clinic = String(row[C.clinic] || '').trim();
@@ -1211,6 +1222,7 @@ function rihanBuckets(clinicName) {
     if (!name) continue;
     const d = parseVisitDate(row[C.lastVisit]);
     if (!d) continue;
+    if (latest[norm(name)] > d) continue;
     const days = Math.floor((t0 - new Date(d.getFullYear(), d.getMonth(), d.getDate())) / 86400000);
     if (days >= R.M1_MIN && days <= R.M1_MAX) out.m1.push({ name, days });
     else if (days >= R.M2_MIN && days <= R.M2_MAX) out.m2.push({ name, days });
