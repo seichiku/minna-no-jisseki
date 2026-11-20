@@ -2720,7 +2720,18 @@ function renderGmqf() {
   const signed = n => (n < 0 ? '−' : '') + yenFmt(Math.abs(n));
   const title = cell(0, 0).replace(/^.*｜/, '');
   const mRate = cell(4, 1), fixed = cell(5, 1);
-  let html = `<div class="kpi-note" style="margin-bottom:8px">${escHtml(title)}　📡 毎時更新</div>
+  // 冒頭＝表示している人数の平均（目標と着地予想）2026-11-20 竹中指示
+  const avgG = Math.round(list.reduce((t, x) => t + x.g, 0) / list.length);
+  const avgProj = Math.round(list.reduce((t, x) => t + x.proj, 0) / list.length);
+  const avgGap = goal - avgG;
+  const avgBand = avgGap <= 0 ? 'green' : (avgG >= 0 ? 'yellow' : 'red');
+  let html = `<div class="kpi-block"><h3 class="kpi-h">${list.length}人平均の個人利益</h3>
+    <div class="kpi-cards" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+      <div class="kpi-card"><div class="kpi-card-label">目標</div><div class="kpi-card-big">${yenFmt(goal)}</div><div class="kpi-card-sub">個人利益 1人あたり</div></div>
+      <div class="kpi-card budget-${avgBand}"><div class="kpi-card-label">着地予想（${list.length}人平均）</div><div class="kpi-card-big">${signed(avgG)}</div><div class="kpi-card-sub">個人売上の着地予想 平均 ${yenFmt(avgProj)}</div></div>
+      <div class="kpi-card"><div class="kpi-card-label">目標まで</div><div class="kpi-card-big">${avgGap <= 0 ? '達成' : 'あと ' + yenFmt(avgGap)}</div><div class="kpi-card-sub">${avgGap <= 0 ? '平均で目標を ' + yenFmt(-avgGap) + ' 上回る予想' : '1人あたりの平均'}</div></div>
+    </div></div>
+  <div class="kpi-note" style="margin-bottom:8px">${escHtml(title)}　📡 毎時更新</div>
   <div class="kpi-note" style="margin-bottom:8px">個人利益（G）＝個人売上 × ${escHtml(mRate || '87%')} − 固定費 ${escHtml(fixed || '¥1,000,000')}。月の途中なので、今のペースで月末まで進んだ場合の予想で並べています。目標は個人利益 ${yenFmt(goal)}。</div>
   <div class="rank-table-wrap"><table class="rank-table">
     <thead><tr><th>順位</th><th>施術者</th><th>院</th><th>個人利益（予想）</th><th>20万円まで</th><th>個人売上（予想）</th><th>予想稼働率</th><th>予想コマ単価</th></tr></thead><tbody>`;
