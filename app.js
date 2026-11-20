@@ -2721,7 +2721,7 @@ function renderGmqf() {
   const title = cell(0, 0).replace(/^.*｜/, '');
   const mRate = cell(4, 1), fixed = cell(5, 1);
   let html = `<div class="kpi-note" style="margin-bottom:8px">${escHtml(title)}　📡 毎時更新</div>
-  <div class="kpi-note" style="margin-bottom:8px">個人利益（G）＝個人売上 × ${escHtml(mRate || '90%')} − 固定費 ${escHtml(fixed || '¥1,000,000')}。月の途中なので、今のペースで月末まで進んだ場合の予想で並べています。目標は個人利益 ${yenFmt(goal)}。</div>
+  <div class="kpi-note" style="margin-bottom:8px">個人利益（G）＝個人売上 × ${escHtml(mRate || '87%')} − 固定費 ${escHtml(fixed || '¥1,000,000')}。月の途中なので、今のペースで月末まで進んだ場合の予想で並べています。目標は個人利益 ${yenFmt(goal)}。</div>
   <div class="rank-table-wrap"><table class="rank-table">
     <thead><tr><th>順位</th><th>施術者</th><th>院</th><th>個人利益（予想）</th><th>20万円まで</th><th>個人売上（予想）</th><th>予想稼働率</th><th>予想コマ単価</th></tr></thead><tbody>`;
   list.forEach((x, k) => {
