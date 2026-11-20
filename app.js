@@ -181,10 +181,11 @@ async function loadAllData(credential) {
     __readAt = data.readAt || {};
 
     // 2026-08-28: loadCaseData（旧日報）は廃止＝中継APIから旧日報3シートを外し高速化
-    await Promise.all([loadKpiData(), loadPersonalRanking(), loadRankGrid()]);
+    await Promise.all([loadKpiData(), loadPersonalRanking(), loadRankGrid(), loadGmqf()]);
     renderDataFresh();   // 売上データの更新時刻（日次達成タブの見出しから。信頼性の可視化 2026-09-14）
     renderKpi();
     renderPersonalRanking();
+    renderGmqf();
     logView('チーム実績');   // 初期表示タブもアクセスログに記録（2026-08-26）
   } catch (err) {
     console.error('Data loading error:', err);
@@ -2665,5 +2666,80 @@ function renderPersonalRanking() {
     </tr>`;
   });
   html += `</tbody></table></div>`;
+  el.innerHTML = html;
+}
+
+// ============================================================
+// 個人利益（G=MQ-F）ランキング（2026-11-20 竹中指示）
+//   表示元＝分析シート「G=MQ-F」タブ（構築GAS buildGmqfTab_ が毎時更新）。式と入力値（M率・F）はシート側が正本。
+//   列: 0施術者 1所属院 2 G(着地予測) 6稼働率 7コマ単価 11個人売上(着地予測)。並びは G(着地予測) の高い順。
+//   予想稼働率・予想コマ単価＝今のペースが月末まで続いた場合の値（着地予測は売上を日数で伸ばす計算なので、今月の累計と同じ値になる）。
+// ============================================================
+let kpiGmqfGrid = null;
+let kpiGmqfError = false;
+
+async function loadGmqf() {
+  try {
+    kpiGmqfGrid = await fetchSheet(CONFIG.KPI.ANALYSIS_ID, CONFIG.KPI.GMQF_TAB);
+    kpiGmqfError = false;
+  } catch (err) {
+    console.warn('G=MQ-F 読込失敗:', err);
+    kpiGmqfError = true;
+  }
+}
+
+function renderGmqf() {
+  const el = document.getElementById('gmqfBody');
+  if (!el) return;
+  if (kpiGmqfError || !kpiGmqfGrid) {
+    el.innerHTML = `<div class="kpi-note">G=MQ-F（分析シート）を読み込めませんでした。</div>`;
+    return;
+  }
+  const g = kpiGmqfGrid;
+  const cell = (i, j) => String(((g[i] || [])[j]) == null ? '' : (g[i] || [])[j]).trim();
+  let hi = -1;
+  for (let i = 0; i < g.length; i++) { if (cell(i, 0) === '施術者') { hi = i; break; } }
+  if (hi < 0) {
+    el.innerHTML = `<div class="kpi-note">G=MQ-F のデータがまだありません（毎時更新）。</div>`;
+    return;
+  }
+  const hide = (CONFIG.KPI.HIDE_STAFF || []).concat(CONFIG.KPI.GMQF_HIDE || []);
+  const goal = CONFIG.KPI.GMQF_GOAL || 200000;
+  const list = [];
+  for (let i = hi + 1; i < g.length; i++) {
+    const staff = cell(i, 0);
+    if (!staff || /名合計$/.test(staff)) break;
+    if (hide.includes(staff)) continue;
+    list.push({ staff, clinic: cell(i, 1), g: kpiNum(cell(i, 2)), rate: cell(i, 6), unit: cell(i, 7), proj: kpiNum(cell(i, 11)) });
+  }
+  if (!list.length) {
+    el.innerHTML = `<div class="kpi-note">今月の個人実績はまだありません（毎時更新）。</div>`;
+    return;
+  }
+  list.sort((a, b) => b.g - a.g);
+  const signed = n => (n < 0 ? '−' : '') + yenFmt(Math.abs(n));
+  const title = cell(0, 0).replace(/^.*｜/, '');
+  const mRate = cell(4, 1), fixed = cell(5, 1);
+  let html = `<div class="kpi-note" style="margin-bottom:8px">${escHtml(title)}　📡 毎時更新</div>
+  <div class="kpi-note" style="margin-bottom:8px">個人利益（G）＝個人売上 × ${escHtml(mRate || '90%')} − 固定費 ${escHtml(fixed || '¥1,000,000')}。月の途中なので、今のペースで月末まで進んだ場合の予想で並べています。目標は個人利益 ${yenFmt(goal)}。</div>
+  <div class="rank-table-wrap"><table class="rank-table">
+    <thead><tr><th>順位</th><th>施術者</th><th>院</th><th>個人利益（予想）</th><th>20万円まで</th><th>個人売上（予想）</th><th>予想稼働率</th><th>予想コマ単価</th></tr></thead><tbody>`;
+  list.forEach((x, k) => {
+    const pos = k + 1;
+    const medal = pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : String(pos);
+    const gap = goal - x.g;
+    html += `<tr class="${gap <= 0 ? 'rank-green' : ''}">
+      <td class="rank-pos">${medal}</td>
+      <td class="rank-name">${escHtml(x.staff)}</td>
+      <td class="rank-clinic">${escHtml(x.clinic)}</td>
+      <td class="rank-sales"${x.g < 0 ? ' style="color:#b91c1c"' : ''}>${signed(x.g)}</td>
+      <td>${gap <= 0 ? '達成' : 'あと ' + yenFmt(gap)}</td>
+      <td>${yenFmt(x.proj)}</td>
+      <td>${escHtml(x.rate || '—')}</td>
+      <td>${escHtml(x.unit || '—')}</td>
+    </tr>`;
+  });
+  html += `</tbody></table></div>
+  <div class="kpi-note" style="margin-top:6px">予想稼働率・予想コマ単価＝今月ここまでの累計の値（このペースが月末まで続いた場合）。稼働率＝施術コマ ÷（実労働時間×6コマ）／コマ単価＝個人売上 ÷ コマ数（サブスク消化・検査のコマは除く）。</div>`;
   el.innerHTML = html;
 }
