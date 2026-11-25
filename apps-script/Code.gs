@@ -164,7 +164,6 @@ function readBundle_(forceRefresh) {
     // 2026-08-29・09-04 に各1回）対策: 1.5秒待って1回だけ読み直す。それでも失敗なら null。
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
-        var ss = cache[id] || (cache[id] = SpreadsheetApp.openById(id));
         var grid;
         if (id === TAC_ID && name === '行動ログ') {
           // 2026-09-14: 旧戦術ダッシュボードは廃止。各自の育成シート「戦術記録」を
@@ -173,6 +172,8 @@ function readBundle_(forceRefresh) {
         } else if (id === TAC_ID && name === '行動計画') {
           grid = readIkuseiPlan_();
         } else {
+          // 2026-11-25: TAC_ID（旧戦術ダッシュボード）は削除済み。上の2キーでは開かない（開くと例外で null になる）。
+          var ss = cache[id] || (cache[id] = SpreadsheetApp.openById(id));
           var sh = ss.getSheetByName(name);
           // 「フロー（3院）」はタブ名に月が付く（例: フロー（3院）2026年8月）→プレフィックス一致で解決
           if (!sh && name === 'フロー（3院）') {
